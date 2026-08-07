@@ -1,5 +1,11 @@
-import os
-import html
+
+# ============================================================
+# EXECUTIVE WORKLOAD & CAPACITY DASHBOARD
+# Dữ liệu nguồn: workbook Template data for Dashboard
+# Công nghệ: Streamlit + Pandas + Plotly
+# ============================================================
+
+import io
 from pathlib import Path
 
 import numpy as np
@@ -8,956 +14,1444 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+
 # ============================================================
-# PAGE CONFIG
+# 1. PAGE CONFIG
 # ============================================================
 st.set_page_config(
-    page_title="CS Workload & Capacity Dashboard",
+    page_title="Executive Workload & Capacity Dashboard",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# ============================================================
-# CONSTANTS
-# ============================================================
+# Màu sắc dashboard
 NAVY = "#083B82"
 BLUE = "#0B63CE"
 ORANGE = "#ED6B21"
 GREEN = "#169B62"
 AMBER = "#F59E0B"
 RED = "#DC2626"
-LIGHT_BG = "#F7F9FC"
-TEXT = "#17324D"
-MUTED = "#6B7C93"
-BORDER = "#D9E2EC"
+PURPLE = "#8B5CF6"
+LIGHT_BLUE = "#6CB6FF"
+BG = "#F7F9FC"
+PANEL = "#FFFFFF"
+TEXT = "#1F2937"
+MUTED = "#6B7280"
 
-MONTH_ORDER = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"]
-SEGMENT_ORDER = ["AE", "AI", "OE", "OI", "CC", "TR", "WH"]
-MODE_COLS = ["AI", "AE", "OILCL", "OIFCL", "OELCL", "OEFCL", "DI", "DE", "DM", "CE", "CI", "HE", "HI", "RE", "RI", "RD"]
+FISCAL_MONTHS = ["Apr", "May", "Jun", "Jul", "Aug", "Sep",
+                 "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"]
+MONTH_ORDER = {m: i + 1 for i, m in enumerate(FISCAL_MONTHS)}
+
+STATUS_ORDER = ["Less load", "Balanced", "High load", "Overload"]
+STATUS_COLOR = {
+    "Less load": GREEN,
+    "Balanced": BLUE,
+    "High load": AMBER,
+    "Overload": RED,
+}
+
+BU_ORDER = ["AE", "AI", "OE", "OI", "CC", "TR", "WH"]
+
+# Transportation mode columns nằm trong sheet Shipment volume.
+# App sẽ tự dùng các cột D:S nếu không nhận diện được bằng tên.
+KNOWN_MODE_KEYWORDS = [
+    "AE", "AI", "OE", "OI", "AIR", "OCEAN", "SEA", "FCL", "LCL",
+    "TRUCK", "TRUCKING", "CC", "CUSTOM", "WH", "WAREHOUSE", "RAIL"
+]
+
 
 # ============================================================
-# CSS
+# 2. CSS
 # ============================================================
 st.markdown(
     f"""
     <style>
-        :root {{
-            --navy: {NAVY};
-            --blue: {BLUE};
-            --orange: {ORANGE};
-            --green: {GREEN};
-            --amber: {AMBER};
-            --red: {RED};
-            --text: #172033;
-            --muted: #667085;
-            --line: #DCE5F0;
-            --panel: #FFFFFF;
-            --page: #FFFFFF;
-        }}
+    .stApp {{
+        background-color: {BG};
+    }}
 
-        html, body, [class*="css"] {{font-family: Arial, "Segoe UI", sans-serif;}}
-        .stApp {{background:#FFFFFF; color:var(--text);}}
-        [data-testid="stHeader"] {{height:2.45rem; background:#FFFFFF;}}
-        [data-testid="stToolbar"] {{top:.20rem;}}
-        .block-container {{max-width:1700px; padding-top:.45rem; padding-bottom:1.2rem; padding-left:2rem; padding-right:2rem;}}
+    .block-container {{
+        padding-top: 1.25rem;
+        padding-bottom: 2rem;
+        max-width: 1600px;
+    }}
 
-        /* SIDEBAR */
-        [data-testid="stSidebar"] {{
-            background:linear-gradient(180deg,#073472 0%,#0B4D9B 100%);
-            border-right:none;
-        }}
-        [data-testid="stSidebar"] > div:first-child {{padding-top:.6rem;}}
-        [data-testid="stSidebar"] * {{color:#FFFFFF;}}
-        [data-testid="stSidebar"] div[role="radiogroup"] {{gap:.35rem;}}
-        [data-testid="stSidebar"] label[data-baseweb="radio"] {{
-            padding:.68rem .7rem; border-radius:0; margin:0; width:100%;
-        }}
-        [data-testid="stSidebar"] label[data-baseweb="radio"]:has(input:checked) {{
-            background:rgba(11,99,206,.55); border-left:4px solid #ED6B21;
-        }}
-        [data-testid="stSidebar"] .stRadio label {{font-weight:700; font-size:.92rem;}}
-        .side-brand {{padding:.35rem .2rem .5rem .2rem;}}
-        .side-brand-title {{font-size:1.05rem;font-weight:800;line-height:1.2;color:white;}}
-        .side-brand-sub {{font-size:.76rem;color:#D8E5F8;margin-top:.25rem;}}
-        .side-footer {{position:relative;margin-top:12rem;color:#D8E5F8;font-size:.72rem;line-height:1.65;}}
+    [data-testid="stSidebar"] {{
+        background: {NAVY};
+    }}
 
-        /* COMPACT HEADER */
-        .dashboard-title {{
-            font-size:1.62rem; line-height:1.05; font-weight:850; color:{NAVY} !important;
-            margin:0 0 .18rem 0; letter-spacing:-.02em;
-        }}
-        .dashboard-subtitle {{
-            color:#667085 !important; font-size:.78rem; line-height:1.15; margin:0 0 .22rem 0;
-        }}
-        .dashboard-filter {{
-            color:#667085; font-size:.74rem; line-height:1.15; margin:0 0 .48rem 0;
-        }}
-        .orange-rule {{height:3px;background:#ED6B21;margin:0 -2rem .65rem -2rem;}}
+    [data-testid="stSidebar"] * {{
+        color: white;
+    }}
 
-        /* FILTER BAR */
-        .filter-label {{font-size:.74rem;color:#667085;font-weight:600;margin-bottom:.1rem;}}
-        div[data-baseweb="select"] > div {{min-height:38px !important; border-color:#D7E0EA !important;}}
-        .stButton > button {{
-            border:1px solid #ED6B21; color:#ED6B21; background:#FFFFFF;
-            border-radius:8px; font-weight:700; min-height:38px;
-        }}
-        .stButton > button:hover {{border-color:#ED6B21;color:#ED6B21;background:#FFF7F0;}}
-        .filter-divider {{height:1px;background:#E7ECF2;margin:.45rem -2rem 1rem -2rem;}}
+    [data-testid="stSidebar"] label {{
+        color: white !important;
+    }}
 
-        /* KPI */
-        .kpi-card {{
-            background:#FFFFFF; border:1px solid #E1E7EF; border-radius:12px;
-            height:190px; min-height:190px; max-height:190px; display:flex;
-            flex-direction:column; justify-content:space-between; align-items:center;
-            box-sizing:border-box; overflow:hidden; box-shadow:0 2px 10px rgba(28,54,89,.08);
-            padding:1.05rem .75rem .9rem .75rem;
-        }}
-        .kpi-label {{
-            color:var(--navy); font-size:.79rem; font-weight:800; text-align:center;
-            line-height:1.22; min-height:2.1rem; display:flex; align-items:center; justify-content:center;
-        }}
-        .kpi-value {{
-            font-size:2.0rem; font-weight:850; line-height:1; color:var(--navy);
-            text-align:center; margin:.15rem 0;
-        }}
-        .kpi-note {{
-            color:#667085; font-size:.69rem; line-height:1.2; text-align:center; min-height:1rem;
-        }}
-        .accent-orange .kpi-value {{color:var(--orange);}}
-        .accent-green .kpi-value {{color:var(--green);}}
-        .accent-amber .kpi-value {{color:var(--amber);}}
-        .accent-red .kpi-value {{color:var(--red);}}
+    .dashboard-title {{
+        font-size: 30px;
+        font-weight: 800;
+        color: {NAVY};
+        margin-bottom: 2px;
+        line-height: 1.15;
+    }}
 
-        /* PANELS */
-        .section-title {{
-            background:transparent; color:var(--navy); padding:0; border-radius:0;
-            font-size:.82rem; font-weight:850; margin:.1rem 0 .3rem 0; letter-spacing:.01em;
-        }}
-        [data-testid="stVerticalBlockBorderWrapper"] {{border-color:#E1E7EF !important;border-radius:12px !important;box-shadow:0 2px 10px rgba(28,54,89,.06);}}
-        div[data-testid="stDataFrame"] {{border:1px solid var(--line); border-radius:10px; overflow:hidden;}}
-        h1,h2,h3 {{color:var(--navy);}}
-        .small-note {{font-size:.68rem;color:#667085;margin-top:.2rem;}}
+    .dashboard-subtitle {{
+        font-size: 13px;
+        color: {MUTED};
+        margin-bottom: 16px;
+    }}
+
+    .section-title {{
+        color: {NAVY};
+        font-size: 19px;
+        font-weight: 750;
+        margin: 18px 0 8px 0;
+        padding-bottom: 6px;
+        border-bottom: 2px solid {ORANGE};
+    }}
+
+    .kpi-card {{
+        background: {PANEL};
+        border: 1px solid #E5E7EB;
+        border-radius: 14px;
+        padding: 16px 18px;
+        min-height: 122px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }}
+
+    .kpi-label {{
+        font-size: 12px;
+        color: {MUTED};
+        font-weight: 650;
+        text-transform: uppercase;
+        letter-spacing: .35px;
+    }}
+
+    .kpi-value {{
+        font-size: 29px;
+        color: {NAVY};
+        font-weight: 800;
+        margin-top: 7px;
+        line-height: 1.05;
+    }}
+
+    .kpi-note {{
+        font-size: 11px;
+        color: {MUTED};
+        margin-top: 8px;
+    }}
+
+    .info-box {{
+        background: white;
+        border: 1px solid #E5E7EB;
+        border-left: 4px solid {ORANGE};
+        border-radius: 10px;
+        padding: 11px 14px;
+        margin: 4px 0 12px 0;
+        color: {TEXT};
+        font-size: 13px;
+    }}
+
+    .warning-box {{
+        background: #FFF7ED;
+        border: 1px solid #FED7AA;
+        border-left: 4px solid {ORANGE};
+        border-radius: 10px;
+        padding: 11px 14px;
+        margin: 4px 0 12px 0;
+        color: #7C2D12;
+        font-size: 13px;
+    }}
+
+    div[data-testid="stPlotlyChart"] {{
+        background: white;
+        border: 1px solid #E5E7EB;
+        border-radius: 14px;
+        padding: 4px;
+    }}
+
+    .footer {{
+        color: {MUTED};
+        font-size: 11px;
+        text-align: center;
+        margin-top: 24px;
+    }}
     </style>
     """,
     unsafe_allow_html=True,
 )
 
+
 # ============================================================
-# HELPERS
+# 3. HELPERS
 # ============================================================
-def fmt_num(v, decimals=0):
-    if pd.isna(v):
-        return "-"
-    if decimals == 0:
-        return f"{v:,.0f}"
-    return f"{v:,.{decimals}f}"
+def clean_text(value):
+    if pd.isna(value):
+        return ""
+    return str(value).strip()
 
 
-def kpi_card(label, value, note="", accent=""):
-    note_html = (
-        f'<div class="kpi-note">{html.escape(str(note))}</div>'
-        if note else ""
-    )
-    st.markdown(
-        f"""
-        <div class="kpi-card {accent}">
-            <div class="kpi-label">{html.escape(str(label))}</div>
-            <div class="kpi-value">{html.escape(str(value))}</div>
-            {note_html}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+def safe_numeric(series):
+    return pd.to_numeric(series, errors="coerce")
 
 
-def clean_numeric(df, cols):
-    for c in cols:
-        if c in df.columns:
-            df[c] = pd.to_numeric(df[c], errors="coerce")
-    return df
-
-
-def month_sort_key(series):
-    return series.map({m: i for i, m in enumerate(MONTH_ORDER)})
-
-
-def load_hc(xls):
-    raw = pd.read_excel(xls, sheet_name="HC", header=None)
-    df = raw.iloc[3:, :13].copy()
-    df.columns = [
-        "Office", "Month", "Approved_MNG", "Approved_PIC", "Approved_Total",
-        "Actual_MNG", "Actual_PIC", "Actual_Total",
-        "Required_MNG", "Required_PIC", "Required_Total",
-        "Capacity", "Status"
-    ]
-    df = df[df["Office"].notna() & df["Month"].notna()].copy()
-    df["Office"] = df["Office"].astype(str).str.strip()
-    df["Month"] = df["Month"].astype(str).str.strip()
-    df = clean_numeric(df, [c for c in df.columns if c not in ["Office", "Month", "Status"]])
-    df["Status"] = df["Status"].fillna("").astype(str).str.strip()
-    return df
-
-
-def load_shipment(xls):
-    raw = pd.read_excel(xls, sheet_name="Shipment volume", header=None)
-    df = raw.iloc[3:, :20].copy()
-    df.columns = ["Office", "Month", "Active_Customer"] + MODE_COLS + ["TOTAL"]
-    df = df[df["Office"].notna() & df["Month"].notna()].copy()
-    df["Office"] = df["Office"].astype(str).str.strip()
-    df["Month"] = df["Month"].astype(str).str.strip()
-    df = clean_numeric(df, ["Active_Customer"] + MODE_COLS + ["TOTAL"])
-    return df
-
-
-def load_bu(xls):
-    raw = pd.read_excel(xls, sheet_name="BU allocation", header=None)
-    df = raw.iloc[3:, :13].copy()
-    df.columns = [
-        "Office", "Month", "Segment",
-        "Core_Volume", "Core_Time",
-        "Ancillary_Volume", "Ancillary_Time",
-        "Supporting_Volume", "Supporting_Time",
-        "Exception_Volume", "Exception_Time",
-        "Total_Workload", "Network_Share"
-    ]
-    df = df[df["Office"].notna() & df["Month"].notna() & df["Segment"].notna()].copy()
-    for c in ["Office", "Month", "Segment"]:
-        df[c] = df[c].astype(str).str.strip()
-    df = clean_numeric(df, [c for c in df.columns if c not in ["Office", "Month", "Segment"]])
-    return df
-
-
-def load_customer_ns(xls):
-    raw = pd.read_excel(xls, sheet_name="N-S Customer list", header=None)
-    month_headers = raw.iloc[1, 3:15].tolist()
-    cols = ["No", "Office", "Customer"] + [str(x) for x in month_headers] + ["Total"]
-    df = raw.iloc[2:, :16].copy()
-    df.columns = cols
-    df = df[df["Customer"].notna()].copy()
-    df["Office"] = df["Office"].ffill().astype(str).str.strip()
-    df["Customer"] = df["Customer"].astype(str).str.strip()
-    for c in cols[3:]:
-        df[c] = pd.to_numeric(df[c], errors="coerce")
-    return df
-
-
-def discover_default_excel():
-    candidates = []
-    for root in [Path.cwd(), Path("/mnt/data")]:
-        if root.exists():
-            candidates.extend(root.glob("*.xlsx"))
-            candidates.extend(root.glob("*.xlsm"))
-    candidates = [p for p in candidates if not p.name.startswith("~$")]
-    if not candidates:
+def normalize_month(value):
+    """Chuẩn hóa Month về Apr, May, ..."""
+    if pd.isna(value):
         return None
-    # Prefer a workbook containing the expected sheets.
-    for p in candidates:
-        try:
-            xl = pd.ExcelFile(p)
-            required = {"HC", "Shipment volume", "BU allocation", "N-S Customer list"}
-            if required.issubset(set(xl.sheet_names)):
-                return str(p)
-        except Exception:
-            pass
-    return str(candidates[0])
+    text = str(value).strip()
+    # Trường hợp Apr-26 / Apr 26 / datetime-like text
+    if len(text) >= 3:
+        month = text[:3].title()
+        if month in MONTH_ORDER:
+            return month
+    return None
 
 
-@st.cache_data(show_spinner=False)
-def load_data(path_or_buffer):
-    xls = pd.ExcelFile(path_or_buffer)
-    required = {"HC", "Shipment volume", "BU allocation", "N-S Customer list"}
-    missing = required - set(xls.sheet_names)
-    if missing:
-        raise ValueError(f"Missing required sheet(s): {', '.join(sorted(missing))}")
-    return load_hc(xls), load_shipment(xls), load_bu(xls), load_customer_ns(xls)
+def month_label(month):
+    """FY2026: Apr-Dec = 2026, Jan-Mar = 2027"""
+    if month not in MONTH_ORDER:
+        return str(month)
+    year = 2026 if month in ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] else 2027
+    return f"{month}-{str(year)[-2:]}"
 
 
-def filtered(df, office, month):
-    out = df.copy()
-    if office != "All Offices" and "Office" in out.columns:
-        out = out[out["Office"] == office]
-    if month != "All Months" and "Month" in out.columns:
-        out = out[out["Month"] == month]
-    return out
-
-
-def plot_config():
-    return {"displayModeBar": False, "responsive": True}
-
-
-def style_fig(fig, height=350, legend=True):
+def fig_layout(fig, title=None, height=360, showlegend=True):
     fig.update_layout(
+        title=dict(text=title or "", x=0.02, xanchor="left"),
         height=height,
-        margin=dict(l=10, r=10, t=45, b=10),
+        margin=dict(l=25, r=20, t=55, b=30),
         paper_bgcolor="white",
         plot_bgcolor="white",
         font=dict(color=TEXT, size=12),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0) if legend else None,
+        showlegend=showlegend,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+        ),
     )
-    fig.update_xaxes(showgrid=False, linecolor=BORDER)
-    fig.update_yaxes(gridcolor="#E9EFF5", zeroline=False)
+    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(gridcolor="#EEF2F7", zeroline=False)
     return fig
 
 
-# ============================================================
-# SIDEBAR / DATA SOURCE
-# ============================================================
-with st.sidebar:
+def kpi_card(label, value, note=""):
     st.markdown(
-        """
-        <div class="side-brand">
-            <div class="side-brand-title">📊 CS WORKLOAD</div>
-            <div class="side-brand-sub">CAPACITY DASHBOARD</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown("<hr style='border:none;border-top:3px solid #ED6B21;margin:.35rem -1rem .6rem -1rem;'>", unsafe_allow_html=True)
-    page = st.radio(
-        "Navigation",
-        ["Overview", "HC Capacity", "Shipment Volume", "Workload Allocation", "Customer Volume"],
-        label_visibility="collapsed",
-    )
-    with st.expander("Data Source", expanded=False):
-        uploaded = st.file_uploader("Upload updated Excel", type=["xlsx", "xlsm"], label_visibility="collapsed")
-    st.markdown(
-        """
-        <div class="side-footer">
-            CS WORKLOAD<br>
-            DASHBOARD<br><br>
-            © 2026 CS HAD<br>
-            Internal Use Only<br>
-            v1.0
+        f"""
+        <div class="kpi-card">
+            <div class="kpi-label">{label}</div>
+            <div class="kpi-value">{value}</div>
+            <div class="kpi-note">{note}</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-try:
-    source = uploaded if uploaded is not None else discover_default_excel()
-    if source is None:
-        st.error("No Excel workbook found. Please upload the workload workbook from the sidebar.")
-        st.stop()
-    hc, ship, bu, cust = load_data(source)
 
-    # ------------------------------------------------------------
-    # REMOVE SHIPMENT MONTHS WITH NO ACTUAL DATA
-    # Blank / None / NaN / all-zero shipment rows are excluded.
-    # Applied here so empty months disappear from filters, charts,
-    # KPIs, and Shipment Detail.
-    # ------------------------------------------------------------
-    shipment_value_cols = [
-        "Active_Customer", "AI", "AE", "OILCL", "OIFCL",
-        "OELCL", "OEFCL", "DI", "DE", "DM", "CE", "CI",
-        "HE", "HI", "RE", "RI", "RD"
-    ]
+def no_data(message="No data for selected filters."):
+    st.info(message)
 
-    shipment_value_cols = [
-        col for col in shipment_value_cols
-        if col in ship.columns
-    ]
 
-    if shipment_value_cols:
-        for col in shipment_value_cols:
-            ship[col] = pd.to_numeric(ship[col], errors="coerce")
+def find_header_row(raw_df, required_words, max_rows=8):
+    """
+    Tìm dòng header dựa trên số keyword xuất hiện nhiều nhất.
+    raw_df được đọc với header=None.
+    """
+    best_idx, best_score = None, -1
+    for idx in range(min(max_rows, len(raw_df))):
+        values = " | ".join(clean_text(v).lower() for v in raw_df.iloc[idx].tolist())
+        score = sum(1 for w in required_words if w.lower() in values)
+        if score > best_score:
+            best_idx, best_score = idx, score
+    return best_idx
 
-        ship = ship[
-            ship[shipment_value_cols]
-            .fillna(0)
-            .sum(axis=1)
-            .ne(0)
-        ].copy()
 
-        existing_mode_cols = [col for col in MODE_COLS if col in ship.columns]
-        if existing_mode_cols:
-            ship["TOTAL"] = (
-                ship[existing_mode_cols]
-                .fillna(0)
-                .sum(axis=1)
-            )
+def build_multilevel_columns(raw, header_rows):
+    """
+    Ghép merged/multi-level header thành tên cột duy nhất.
+    Forward-fill từng header row theo chiều ngang.
+    """
+    parts = []
+    for r in header_rows:
+        row = pd.Series(raw.iloc[r].tolist()).ffill()
+        parts.append(row)
 
-except Exception as e:
-    st.error(f"Cannot read workbook: {e}")
-    st.stop()
+    cols = []
+    for c in range(raw.shape[1]):
+        labels = []
+        for row in parts:
+            text = clean_text(row.iloc[c])
+            if text and text.lower() != "nan":
+                if not labels or text != labels[-1]:
+                    labels.append(text)
+        name = " | ".join(labels).strip(" |")
+        cols.append(name if name else f"Column_{c+1}")
+    return cols
 
-if uploaded is not None:
-    data_date = "Uploaded file"
-else:
-    try:
-        data_date = pd.Timestamp(Path(source).stat().st_mtime, unit="s").strftime("%d %b %Y")
-    except Exception:
-        data_date = "Not available"
 
-all_offices = sorted(set(hc["Office"].dropna()) | set(ship["Office"].dropna()) | set(bu["Office"].dropna()))
+def fuzzy_col(columns, includes=None, excludes=None):
+    includes = [x.lower() for x in (includes or [])]
+    excludes = [x.lower() for x in (excludes or [])]
+    for col in columns:
+        low = str(col).lower()
+        if all(x in low for x in includes) and not any(x in low for x in excludes):
+            return col
+    return None
+
 
 # ============================================================
-# HEADER + FILTER BAR
+# 4. DATA LOADERS
 # ============================================================
-st.markdown('<div class="dashboard-title">CS WORKLOAD & CAPACITY DASHBOARD</div>', unsafe_allow_html=True)
-st.markdown(f'<div class="dashboard-subtitle">🗓️ Last Updated: {data_date}</div>', unsafe_allow_html=True)
+@st.cache_data(show_spinner=False)
+def read_sheet(file_bytes, sheet_name):
+    return pd.read_excel(io.BytesIO(file_bytes), sheet_name=sheet_name, header=None, engine="openpyxl")
 
-# Session-state driven filters allow a Reset button in the main header.
-if "office_filter" not in st.session_state:
-    st.session_state.office_filter = "All Offices"
-if "month_filter" not in st.session_state:
-    st.session_state.month_filter = "All Months"
 
-# IMPORTANT: reset widget values via callback.
-# Streamlit executes callbacks before widgets are recreated on the next rerun,
-# avoiding StreamlitAPIException from modifying a widget key after instantiation.
-def reset_filters():
-    st.session_state["office_filter"] = "All Offices"
-    st.session_state["month_filter"] = "All Months"
+@st.cache_data(show_spinner=False)
+def get_sheet_names(file_bytes):
+    xls = pd.ExcelFile(io.BytesIO(file_bytes), engine="openpyxl")
+    return xls.sheet_names
 
-meta_office = st.session_state.office_filter
-meta_month = st.session_state.month_filter
-st.markdown(
-    f'<div class="dashboard-filter">FY2026 &nbsp; • &nbsp; Office: {meta_office} &nbsp; • &nbsp; Month: {meta_month}</div>',
-    unsafe_allow_html=True,
-)
-st.markdown('<div class="orange-rule"></div>', unsafe_allow_html=True)
 
-fc1, fc2, spacer, fc3 = st.columns([1.05, 1.05, 1.05, .48], gap="medium")
-with fc1:
-    office = st.selectbox("Office", ["All Offices"] + all_offices, key="office_filter")
+@st.cache_data(show_spinner=False)
+def load_hc(file_bytes):
+    raw = read_sheet(file_bytes, "HC")
+    # Workbook hiện tại: 3 dòng header, data bắt đầu dòng 4.
+    columns = build_multilevel_columns(raw, [1, 2])
+    df = raw.iloc[3:].copy()
+    df.columns = columns
+    df = df.dropna(how="all").reset_index(drop=True)
 
-available_months = []
-for m in MONTH_ORDER:
-    office_mask_hc = (hc["Office"] == office) if office != "All Offices" else pd.Series(True, index=hc.index)
-    office_mask_ship = (ship["Office"] == office) if office != "All Offices" else pd.Series(True, index=ship.index)
-    office_mask_bu = (bu["Office"] == office) if office != "All Offices" else pd.Series(True, index=bu.index)
-    exists = (
-        ((hc["Month"] == m) & office_mask_hc).any()
-        or ((ship["Month"] == m) & office_mask_ship).any()
-        or ((bu["Month"] == m) & office_mask_bu).any()
-    )
-    if exists:
-        available_months.append(m)
+    office_col = fuzzy_col(df.columns, ["office"])
+    month_col = fuzzy_col(df.columns, ["month"])
 
-if st.session_state.month_filter not in ["All Months"] + available_months:
-    st.session_state.month_filter = "All Months"
+    # Xác định cột Total của Approved / Actual / Required
+    approved_total = fuzzy_col(df.columns, ["approved", "total"])
+    actual_total = fuzzy_col(df.columns, ["actual", "total"])
+    required_total = fuzzy_col(df.columns, ["required", "total"])
+    capacity_pct = fuzzy_col(df.columns, ["capacity", "%"])
+    status_col = fuzzy_col(df.columns, ["capacity", "status"]) or fuzzy_col(df.columns, ["status"])
 
-with fc2:
-    month = st.selectbox("Month", ["All Months"] + available_months, key="month_filter")
-with fc3:
-    st.markdown("<div style='height:1.72rem'></div>", unsafe_allow_html=True)
-    st.button(
-        "↻  Reset Filters",
-        use_container_width=True,
-        on_click=reset_filters,
-        key="reset_filters_button",
-    )
+    # Fallback theo vị trí đã phân tích: Office=A, Month=B, E/H/K/L/M
+    if office_col is None and len(df.columns) >= 1:
+        office_col = df.columns[0]
+    if month_col is None and len(df.columns) >= 2:
+        month_col = df.columns[1]
+    if approved_total is None and len(df.columns) >= 5:
+        approved_total = df.columns[4]
+    if actual_total is None and len(df.columns) >= 8:
+        actual_total = df.columns[7]
+    if required_total is None and len(df.columns) >= 11:
+        required_total = df.columns[10]
+    if capacity_pct is None and len(df.columns) >= 12:
+        capacity_pct = df.columns[11]
+    if status_col is None and len(df.columns) >= 13:
+        status_col = df.columns[12]
 
-st.markdown('<div class="filter-divider"></div>', unsafe_allow_html=True)
+    out = pd.DataFrame({
+        "Office": df[office_col].map(clean_text),
+        "Month": df[month_col].map(normalize_month),
+        "Approved HC": safe_numeric(df[approved_total]),
+        "Actual HC": safe_numeric(df[actual_total]),
+        "Required HC": safe_numeric(df[required_total]),
+        "Capacity % Source": safe_numeric(df[capacity_pct]),
+        "Status Source": df[status_col].map(clean_text),
+    })
 
-hc_f = filtered(hc, office, month)
-ship_f = filtered(ship, office, month)
-bu_f = filtered(bu, office, month)
+    # Không lấy dòng chỉ có Office/Month template nhưng không có dữ liệu HC thực
+    metrics = ["Approved HC", "Actual HC", "Required HC"]
+    out["Data_Available"] = out[metrics].notna().any(axis=1)
+    out = out[out["Office"].ne("") & out["Month"].notna()].copy()
 
-# ============================================================
-# OVERVIEW
-# ============================================================
-if page == "Overview":
-    latest_hc = hc_f.dropna(subset=["Required_Total", "Actual_Total"]).copy()
-    if month == "All Months" and not latest_hc.empty:
-        latest_hc["_m"] = month_sort_key(latest_hc["Month"])
-        latest_hc = latest_hc.sort_values(["Office", "_m"]).groupby("Office", as_index=False).tail(1)
-
-    actual_hc = latest_hc["Actual_Total"].sum(min_count=1)
-    required_hc = latest_hc["Required_Total"].sum(min_count=1)
-    total_ship = ship_f["TOTAL"].sum(min_count=1)
-    total_workload = bu_f["Total_Workload"].sum(min_count=1)
-
-    # Capacity is expressed as required HC / actual HC in the source workbook.
-    utilization = (required_hc / actual_hc) if pd.notna(actual_hc) and actual_hc else np.nan
-    exception_shipments = bu_f["Exception_Volume"].sum(min_count=1)
-
-    # Estimated monthly labor capacity in hours using 8h × 95% × 22 days.
-    capacity_hours = actual_hc * 8 * 0.95 * 22 if pd.notna(actual_hc) else np.nan
-
-    k1, k2, k3, k4, k5, k6 = st.columns(6, gap="small")
-    with k1:
-        kpi_card("TOTAL HC (FTE)", fmt_num(actual_hc, 1), "Actual headcount")
-    with k2:
-        kpi_card("TOTAL CAPACITY (HOURS)", fmt_num(capacity_hours), "8h × 95% × 22 days")
-    with k3:
-        kpi_card("TOTAL SHIPMENTS", fmt_num(total_ship), "Selected scope")
-    with k4:
-        kpi_card("TOTAL WORKLOAD (HOURS)", fmt_num(total_workload), "Recorded workload")
-    with k5:
-        kpi_card("CAPACITY UTILIZATION", f"{utilization:.1%}" if pd.notna(utilization) else "-", "Required HC / Actual HC", accent="accent-orange")
-    with k6:
-        kpi_card("EXCEPTION SHIPMENTS", fmt_num(exception_shipments), "Exception volume", accent="accent-green")
-
-    st.markdown('<div class="small-note">pp = percentage points</div>', unsafe_allow_html=True)
-    st.markdown("<div style='height:.45rem'></div>", unsafe_allow_html=True)
-
-    p1, p2, p3 = st.columns([1.12, 1, 1.1], gap="medium")
-
-    with p1:
-        with st.container(border=True):
-            st.markdown('<div class="section-title">📈 &nbsp; WORKLOAD VS CAPACITY (HOURS)</div>', unsafe_allow_html=True)
-            monthly_hc = hc_f.dropna(subset=["Actual_Total"]).copy()
-            if not monthly_hc.empty:
-                monthly_hc["Capacity_Hours"] = monthly_hc["Actual_Total"] * 8 * .95 * 22
-                cap_trend = monthly_hc.groupby("Month", as_index=False)["Capacity_Hours"].sum()
-                work_trend = bu_f.groupby("Month", as_index=False)["Total_Workload"].sum()
-                trend = cap_trend.merge(work_trend, on="Month", how="outer")
-                trend["_m"] = month_sort_key(trend["Month"])
-                trend = trend.sort_values("_m")
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=trend["Month"], y=trend["Capacity_Hours"], mode="lines+markers+text", name="Capacity (Hours)", text=[fmt_num(v) for v in trend["Capacity_Hours"]], textposition="top center", line=dict(color=NAVY, width=2.5), marker=dict(size=7)))
-                fig.add_trace(go.Scatter(x=trend["Month"], y=trend["Total_Workload"], mode="lines+markers+text", name="Workload (Hours)", text=[fmt_num(v) for v in trend["Total_Workload"]], textposition="bottom center", line=dict(color=ORANGE, width=2.5), marker=dict(size=7)))
-                fig = style_fig(fig, 330, legend=True)
-                fig.update_layout(margin=dict(l=0,r=0,t=38,b=5))
-                fig.update_yaxes(title="")
-                fig.update_xaxes(title="")
-                st.plotly_chart(fig, use_container_width=True, config=plot_config())
-            else:
-                st.info("No HC data available for the selected filters.")
-
-    with p2:
-        with st.container(border=True):
-            st.markdown('<div class="section-title">📈 &nbsp; CAPACITY UTILIZATION (%)</div>', unsafe_allow_html=True)
-            util_pct = float(utilization * 100) if pd.notna(utilization) else 0
-            util_pct = max(0, min(util_pct, 100))
-            fig = go.Figure(go.Pie(
-                values=[util_pct, max(100-util_pct, 0)],
-                labels=[f"Utilized ({util_pct:.1f}%)", f"Remaining ({100-util_pct:.1f}%)"],
-                hole=.64,
-                marker=dict(colors=[ORANGE, "#D8D8D8"]),
-                textinfo="none",
-                sort=False,
-            ))
-            fig.add_annotation(text=f"<b>{util_pct:.1f}%</b><br><span style='font-size:12px'>Utilization</span>", x=.5, y=.5, showarrow=False, font=dict(size=24, color=ORANGE))
-            fig.update_layout(height=330, margin=dict(l=5,r=5,t=15,b=10), showlegend=True, legend=dict(orientation="h", y=-.03, x=.5, xanchor="center"), paper_bgcolor="white")
-            st.plotly_chart(fig, use_container_width=True, config=plot_config())
-
-    with p3:
-        with st.container(border=True):
-            st.markdown('<div class="section-title">📊 &nbsp; TOP 5 OFFICES BY UTILIZATION</div>', unsafe_allow_html=True)
-            office_hc = hc_f.groupby("Office", as_index=False).agg(Actual_HC=("Actual_Total","sum"), Required_HC=("Required_Total","sum"))
-            office_hc["Utilization"] = np.where(office_hc["Actual_HC"]>0, office_hc["Required_HC"] / office_hc["Actual_HC"] * 100, np.nan)
-            office_hc = office_hc.dropna(subset=["Utilization"]).nlargest(5, "Utilization").sort_values("Utilization")
-            if not office_hc.empty:
-                fig = px.bar(office_hc, x="Utilization", y="Office", orientation="h", text="Utilization")
-                fig.update_traces(marker_color=ORANGE, texttemplate="%{text:.1f}%", textposition="outside", cliponaxis=False)
-                fig = style_fig(fig, 330, legend=False)
-                fig.update_layout(margin=dict(l=0,r=22,t=18,b=5))
-                fig.update_xaxes(range=[0, max(100, float(office_hc["Utilization"].max())*1.12)], ticksuffix="%", title="Utilization (%)")
-                fig.update_yaxes(title="")
-                st.plotly_chart(fig, use_container_width=True, config=plot_config())
-            else:
-                st.info("No office utilization data available.")
-
-# ============================================================
-# HC CAPACITY
-# ============================================================
-elif page == "HC Capacity":
-    data = hc_f.copy()
-    valid = data.dropna(subset=["Actual_Total", "Required_Total"])
-    actual = valid["Actual_Total"].sum(min_count=1)
-    required = valid["Required_Total"].sum(min_count=1)
-    gap = actual - required if pd.notna(actual) and pd.notna(required) else np.nan
-    avg_cap = valid["Capacity"].mean() if not valid.empty else np.nan
-
-    c1, c2, c3, c4 = st.columns(4)
-    with c1: kpi_card("Approved HC", fmt_num(data["Approved_Total"].sum(min_count=1)), "Approved headcount")
-    with c2: kpi_card("Actual HC", fmt_num(actual), "Actual headcount")
-    with c3: kpi_card("Required HC", fmt_num(required, 1), "Workload-based requirement")
-    with c4: kpi_card("Average Capacity", f"{avg_cap:.1%}" if pd.notna(avg_cap) else "-", f"HC gap: {fmt_num(gap, 1)}", accent="accent-orange" if pd.notna(avg_cap) and avg_cap > 1 else "accent-green")
-
-    # ============================================================
-    # HC CHARTS — GROUPED BY MONTH, THEN OFFICE
-    # ============================================================
-    month_order = [
-        "Apr", "May", "Jun", "Jul", "Aug", "Sep",
-        "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"
-    ]
-
-    hc_chart = data.copy()
-
-    # Only keep rows with meaningful HC information.
-    hc_chart["Actual_Total"] = pd.to_numeric(hc_chart["Actual_Total"], errors="coerce")
-    hc_chart["Required_Total"] = pd.to_numeric(hc_chart["Required_Total"], errors="coerce")
-    hc_chart = hc_chart[
-        hc_chart[["Actual_Total", "Required_Total"]]
-        .fillna(0)
-        .sum(axis=1)
-        .ne(0)
-    ].copy()
-
-    # FY month order: Apr -> Mar.
-    hc_chart["Month"] = pd.Categorical(
-        hc_chart["Month"],
-        categories=month_order,
-        ordered=True
-    )
-    hc_chart = hc_chart.sort_values(["Month", "Office"]).reset_index(drop=True)
-
-    # Display label keeps each month together and offices in sequence.
-    hc_chart["Period"] = (
-        hc_chart["Month"].astype(str)
-        + " · "
-        + hc_chart["Office"].astype(str)
-    )
-
-    # Required / Actual HC ratio.
-    hc_chart["Utilization"] = np.where(
-        hc_chart["Actual_Total"] > 0,
-        hc_chart["Required_Total"] / hc_chart["Actual_Total"] * 100,
+    # Recalculate Capacity để không phụ thuộc cached formula.
+    out["Capacity %"] = np.where(
+        out["Actual HC"].fillna(0) > 0,
+        out["Required HC"] / out["Actual HC"],
         np.nan
     )
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    left, right = st.columns([1, 1], gap="medium")
+    def cap_status(v):
+        if pd.isna(v):
+            return "No data"
+        if v > 1:
+            return "Overload"
+        if v > 0.95:
+            return "High load"
+        if v >= 0.90:
+            return "Balanced"
+        return "Less load"
 
-    with left:
-        st.markdown(
-            '<div class="section-title">ACTUAL vs REQUIRED HC</div>',
-            unsafe_allow_html=True
-        )
+    out["Capacity Status"] = out["Capacity %"].map(cap_status)
+    out["Month Order"] = out["Month"].map(MONTH_ORDER)
+    out["Month Label"] = out["Month"].map(month_label)
+    return out
 
-        if hc_chart.empty:
-            st.info("No HC data available for the selected filters.")
-        else:
-            fig = go.Figure()
 
-            fig.add_trace(
-                go.Bar(
-                    x=hc_chart["Period"],
-                    y=hc_chart["Actual_Total"],
-                    name="Actual HC",
-                    marker_color="#083B82",
-                    text=hc_chart["Actual_Total"].round(1),
-                    textposition="outside",
-                    cliponaxis=False,
-                    hovertemplate=(
-                        "<b>%{x}</b>"
-                        "<br>Actual HC: %{y:.1f}"
-                        "<extra></extra>"
-                    ),
-                )
-            )
+@st.cache_data(show_spinner=False)
+def load_shipment(file_bytes):
+    raw = read_sheet(file_bytes, "Shipment volume")
+    columns = build_multilevel_columns(raw, [1, 2])
+    df = raw.iloc[3:].copy()
+    df.columns = columns
+    df = df.dropna(how="all").reset_index(drop=True)
 
-            fig.add_trace(
-                go.Bar(
-                    x=hc_chart["Period"],
-                    y=hc_chart["Required_Total"],
-                    name="Required HC",
-                    marker_color="#ED6B21",
-                    text=hc_chart["Required_Total"].round(1),
-                    textposition="outside",
-                    cliponaxis=False,
-                    hovertemplate=(
-                        "<b>%{x}</b>"
-                        "<br>Required HC: %{y:.1f}"
-                        "<extra></extra>"
-                    ),
-                )
-            )
+    office_col = fuzzy_col(df.columns, ["office"])
+    month_col = fuzzy_col(df.columns, ["month"])
+    active_col = fuzzy_col(df.columns, ["active", "customer"])
+    total_col = fuzzy_col(df.columns, ["total"])
 
-            fig.update_layout(
-                barmode="group",
-                height=390,
-                margin=dict(l=15, r=15, t=35, b=70),
-                paper_bgcolor="white",
-                plot_bgcolor="white",
-                font=dict(color="#172033"),
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="left",
-                    x=0,
-                    title_text=""
-                ),
-                xaxis_title="",
-                yaxis_title="Headcount",
-                hoverlabel=dict(bgcolor="white"),
-            )
-            fig.update_xaxes(
-                type="category",
-                categoryorder="array",
-                categoryarray=hc_chart["Period"].tolist(),
-                tickangle=-35 if len(hc_chart) > 6 else 0,
-                showgrid=False,
-                tickfont=dict(size=10),
-            )
-            fig.update_yaxes(
-                rangemode="tozero",
-                gridcolor="#E9EEF5",
-            )
+    # Fallback positional logic từ workbook đã phân tích
+    if office_col is None:
+        office_col = df.columns[0]
+    if month_col is None:
+        month_col = df.columns[1]
+    if active_col is None and len(df.columns) >= 3:
+        active_col = df.columns[2]
+    if total_col is None and len(df.columns) >= 20:
+        total_col = df.columns[19]
 
-            st.plotly_chart(
-                fig,
-                use_container_width=True,
-                config={"displayModeBar": False},
-            )
+    base_cols = {office_col, month_col, active_col, total_col}
 
-    with right:
-        st.markdown(
-            '<div class="section-title">CAPACITY UTILIZATION</div>',
-            unsafe_allow_html=True
-        )
+    # Theo workbook, D:S là transportation mode.
+    positional_modes = list(df.columns[3:19]) if len(df.columns) >= 20 else []
+    mode_cols = [c for c in positional_modes if c not in base_cols]
 
-        util_chart = hc_chart.dropna(subset=["Utilization"]).copy()
+    wide = pd.DataFrame({
+        "Office": df[office_col].map(clean_text),
+        "Month": df[month_col].map(normalize_month),
+        "Active Customer": safe_numeric(df[active_col]),
+        "Total Source": safe_numeric(df[total_col]),
+    })
 
-        if util_chart.empty:
-            st.info("No utilization data available for the selected filters.")
-        else:
-            # Status colors:
-            # <95% = capacity available
-            # 95-100% = near full
-            # >100% = required HC exceeds actual HC
-            util_colors = np.select(
-                [
-                    util_chart["Utilization"] < 95,
-                    util_chart["Utilization"] <= 100,
-                ],
-                [
-                    "#169B62",
-                    "#ED6B21",
-                ],
-                default="#DC2626",
-            )
+    for col in mode_cols:
+        wide[str(col)] = safe_numeric(df[col])
 
-            fig = go.Figure(
-                go.Bar(
-                    x=util_chart["Period"],
-                    y=util_chart["Utilization"],
-                    marker_color=util_colors,
-                    text=util_chart["Utilization"].map(lambda x: f"{x:.1f}%"),
-                    textposition="outside",
-                    cliponaxis=False,
-                    hovertemplate=(
-                        "<b>%{x}</b>"
-                        "<br>Required / Actual HC: %{y:.1f}%"
-                        "<extra></extra>"
-                    ),
-                )
-            )
+    wide = wide[wide["Office"].ne("") & wide["Month"].notna()].copy()
+    wide["Data_Available"] = wide[["Active Customer", "Total Source"] + [str(c) for c in mode_cols]].notna().any(axis=1)
 
-            fig.add_hline(
-                y=100,
-                line_dash="dash",
-                line_color="#DC2626",
-                line_width=2,
-                annotation_text="100% capacity",
-                annotation_position="top right",
-            )
+    # Tính lại Total từ các mode thay vì phụ thuộc cached formula
+    numeric_mode_names = [str(c) for c in mode_cols]
+    wide["Total Shipment Volume"] = wide[numeric_mode_names].sum(axis=1, min_count=1)
+    wide["Month Order"] = wide["Month"].map(MONTH_ORDER)
+    wide["Month Label"] = wide["Month"].map(month_label)
 
-            max_util = util_chart["Utilization"].max()
-            y_max = max(110, float(max_util) * 1.12)
+    long = wide.melt(
+        id_vars=["Office", "Month", "Month Order", "Month Label", "Active Customer",
+                 "Total Source", "Total Shipment Volume", "Data_Available"],
+        value_vars=numeric_mode_names,
+        var_name="Transportation Mode",
+        value_name="Volume",
+    )
+    long["Transportation Mode"] = (
+        long["Transportation Mode"]
+        .astype(str)
+        .str.replace(r"^.*\|\s*", "", regex=True)
+        .str.strip()
+    )
+    long["Volume"] = safe_numeric(long["Volume"])
+    return wide, long
 
-            fig.update_layout(
-                height=390,
-                margin=dict(l=15, r=15, t=35, b=70),
-                paper_bgcolor="white",
-                plot_bgcolor="white",
-                font=dict(color="#172033"),
-                showlegend=False,
-                xaxis_title="",
-                yaxis_title="Required / Actual HC (%)",
-                hoverlabel=dict(bgcolor="white"),
-            )
-            fig.update_xaxes(
-                type="category",
-                categoryorder="array",
-                categoryarray=util_chart["Period"].tolist(),
-                tickangle=-35 if len(util_chart) > 6 else 0,
-                showgrid=False,
-                tickfont=dict(size=10),
-            )
-            fig.update_yaxes(
-                range=[0, y_max],
-                gridcolor="#E9EEF5",
-                ticksuffix="%",
-            )
 
-            st.plotly_chart(
-                fig,
-                use_container_width=True,
-                config={"displayModeBar": False},
-            )
+@st.cache_data(show_spinner=False)
+def load_bu(file_bytes):
+    raw = read_sheet(file_bytes, "BU allocation")
+    columns = build_multilevel_columns(raw, [1, 2])
+    df = raw.iloc[3:].copy()
+    df.columns = columns
+    df = df.dropna(how="all").reset_index(drop=True)
 
-elif page == "Shipment Volume":
-    data = ship_f.copy()
-    total = data["TOTAL"].sum(min_count=1)
-    active = data["Active_Customer"].sum(min_count=1)
-    mode_totals = data[MODE_COLS].sum().sort_values(ascending=False)
-    top_mode = mode_totals.index[0] if len(mode_totals) and mode_totals.iloc[0] > 0 else "-"
-    top_mode_vol = mode_totals.iloc[0] if len(mode_totals) and mode_totals.iloc[0] > 0 else np.nan
+    office_col = fuzzy_col(df.columns, ["office"])
+    month_col = fuzzy_col(df.columns, ["month"])
 
-    c1, c2, c3, c4 = st.columns(4)
-    with c1: kpi_card("Total Shipment", fmt_num(total), "Selected office/month scope")
-    with c2: kpi_card("Active Customer", fmt_num(active), "Sum of reported active customers")
-    with c3: kpi_card("Top Mode", top_mode, f"{fmt_num(top_mode_vol)} shipments" if pd.notna(top_mode_vol) else "", accent="accent-orange")
-    with c4:
-        avg_per_cust = total/active if pd.notna(total) and pd.notna(active) and active else np.nan
-        kpi_card("Shipment / Customer", fmt_num(avg_per_cust, 1), "Average volume per active customer")
+    if office_col is None:
+        office_col = df.columns[0]
+    if month_col is None:
+        month_col = df.columns[1]
 
-    left, right = st.columns([1.15, 1], gap="large")
-    with left:
-        trend = data.groupby("Month", as_index=False)["TOTAL"].sum().dropna()
-        if not trend.empty:
-            trend["_m"] = month_sort_key(trend["Month"])
-            trend = trend.sort_values("_m")
-            fig = px.bar(trend, x="Month", y="TOTAL", text="TOTAL", title="Shipment Volume by Month")
-            fig.update_traces(marker_color=ORANGE, texttemplate="%{text:,.0f}", textposition="outside")
-            fig = style_fig(fig, 390, legend=False)
-            fig.update_xaxes(title="")
-            fig.update_yaxes(title="Shipments")
-            st.plotly_chart(fig, use_container_width=True, config=plot_config())
-        else:
-            st.info("No shipment data available.")
+    # Workbook analysis: A Office, B Month, C BU/Segment, D:K 4 cặp Volume/Processing Time, L workload, M %
+    segment_col = df.columns[2] if len(df.columns) > 2 else None
+    total_workload_col = df.columns[11] if len(df.columns) > 11 else fuzzy_col(df.columns, ["total", "workload"])
+    network_pct_col = df.columns[12] if len(df.columns) > 12 else fuzzy_col(df.columns, ["network"])
 
-    with right:
-        mt = mode_totals[mode_totals > 0].reset_index()
-        mt.columns = ["Mode","Volume"]
-        mt = mt.head(10).sort_values("Volume")
-        if not mt.empty:
-            fig = px.bar(mt, x="Volume", y="Mode", orientation="h", text="Volume", title="Top Transportation Modes")
-            fig.update_traces(marker_color=BLUE, texttemplate="%{text:,.0f}", textposition="outside")
-            fig = style_fig(fig, 390, legend=False)
-            fig.update_xaxes(title="Shipment volume")
-            fig.update_yaxes(title="")
-            st.plotly_chart(fig, use_container_width=True, config=plot_config())
-        else:
-            st.info("No transportation mode breakdown available.")
+    out = pd.DataFrame({
+        "Office": df[office_col].map(clean_text),
+        "Month": df[month_col].map(normalize_month),
+        "BU": df[segment_col].map(clean_text) if segment_col else "",
+        "Total Workload": safe_numeric(df[total_workload_col]) if total_workload_col else np.nan,
+        "% of Network Source": safe_numeric(df[network_pct_col]) if network_pct_col else np.nan,
+    })
 
-    st.markdown('<div class="section-title">Shipment Detail</div>', unsafe_allow_html=True)
-    show_cols = ["Office","Month","Active_Customer"] + MODE_COLS + ["TOTAL"]
+    # Cặp cột theo vị trí
+    group_defs = {
+        "Core": (3, 4),
+        "Ancillary": (5, 6),
+        "Supporting": (7, 8),
+        "Exception": (9, 10),
+    }
 
-    # Final safeguard: hide any remaining month without shipment data.
-    detail_value_cols = [
-        col for col in ["Active_Customer"] + MODE_COLS
-        if col in data.columns
-    ]
-    shipment_detail = data.copy()
+    long_rows = []
+    for idx, row in df.iterrows():
+        office = clean_text(row[office_col])
+        month = normalize_month(row[month_col])
+        bu = clean_text(row[segment_col]) if segment_col else ""
+        if not office or month is None:
+            continue
 
-    if detail_value_cols:
-        shipment_detail = shipment_detail[
-            shipment_detail[detail_value_cols]
-            .apply(pd.to_numeric, errors="coerce")
-            .fillna(0)
-            .sum(axis=1)
-            .ne(0)
-        ].copy()
+        total_workload = pd.to_numeric(row[total_workload_col], errors="coerce") if total_workload_col else np.nan
 
-    st.dataframe(
-        shipment_detail[show_cols],
-        use_container_width=True,
-        hide_index=True
+        for work_type, (vol_idx, time_idx) in group_defs.items():
+            volume = pd.to_numeric(row.iloc[vol_idx], errors="coerce") if len(row) > vol_idx else np.nan
+            proc_time = pd.to_numeric(row.iloc[time_idx], errors="coerce") if len(row) > time_idx else np.nan
+            long_rows.append({
+                "Office": office,
+                "Month": month,
+                "Month Order": MONTH_ORDER.get(month),
+                "Month Label": month_label(month),
+                "BU": bu,
+                "Work Type": work_type,
+                "Volume": volume,
+                "Processing Time": proc_time,
+                "Total Workload": total_workload,
+            })
+
+    detail = pd.DataFrame(long_rows)
+
+    out = out[out["Office"].ne("") & out["Month"].notna()].copy()
+    out["Month Order"] = out["Month"].map(MONTH_ORDER)
+    out["Month Label"] = out["Month"].map(month_label)
+    out["Data_Available"] = out["Total Workload"].notna()
+
+    # Recalculate % of workload contribution theo Office+Month
+    denom = out.groupby(["Office", "Month"])["Total Workload"].transform("sum")
+    out["Workload Contribution %"] = np.where(
+        denom.abs() > 0,
+        out["Total Workload"] / denom,
+        np.nan
     )
 
-# ============================================================
-# WORKLOAD ALLOCATION
-# ============================================================
-elif page == "Workload Allocation":
-    data = bu_f.copy()
-    total_work = data["Total_Workload"].sum(min_count=1)
-    seg_tot = data.groupby("Segment")["Total_Workload"].sum().sort_values(ascending=False)
-    largest_seg = seg_tot.index[0] if not seg_tot.empty else "-"
-    largest_share = seg_tot.iloc[0] / total_work if not seg_tot.empty and pd.notna(total_work) and total_work else np.nan
-    exception_time = data["Exception_Time"].sum(min_count=1)
+    return out, detail
 
-    c1, c2, c3, c4 = st.columns(4)
-    with c1: kpi_card("Total Workload", fmt_num(total_work), "All workload components")
-    with c2: kpi_card("Largest Segment", largest_seg, f"{largest_share:.1%} of workload" if pd.notna(largest_share) else "")
-    with c3: kpi_card("Exception Time", fmt_num(exception_time), "Exception handling workload", accent="accent-amber")
-    with c4: kpi_card("Segments", fmt_num(data["Segment"].nunique()), "Active business segments")
 
-    left, right = st.columns([1.15, 1], gap="large")
+@st.cache_data(show_spinner=False)
+def load_customer(file_bytes):
+    """
+    Hiện customer-level data đáng tin cậy chỉ lấy từ N-S Customer list.
+    Không dùng cached total của HAN Customer list / HLC.
+    """
+    raw = read_sheet(file_bytes, "N-S Customer list")
+
+    # Header workbook hiện tại: row 1-2, data từ row 3.
+    # Ta lấy row 2 (index 1) làm tên chính, nhưng fallback theo vị trí.
+    header = [clean_text(x) for x in raw.iloc[1].tolist()]
+    df = raw.iloc[2:].copy()
+    df.columns = header
+    df = df.dropna(how="all").reset_index(drop=True)
+
+    # Fallback theo vị trí: A No, B Office, C Customer, D:O month, P Total
+    office_col = df.columns[1] if len(df.columns) > 1 else None
+    customer_col = df.columns[2] if len(df.columns) > 2 else None
+    month_cols = list(df.columns[3:15]) if len(df.columns) >= 16 else list(df.columns[3:-1])
+
+    # Nếu header month bị trống / duplicate, dùng giá trị row 1 + row 2 để dựng lại
+    if not any(normalize_month(c) for c in month_cols):
+        built_cols = build_multilevel_columns(raw, [0, 1])
+        df = raw.iloc[2:].copy()
+        df.columns = built_cols
+        office_col = df.columns[1]
+        customer_col = df.columns[2]
+        month_cols = list(df.columns[3:15])
+
+    records = []
+    for _, row in df.iterrows():
+        office = clean_text(row[office_col])
+        customer = clean_text(row[customer_col])
+        if not customer or customer.lower() == "total":
+            continue
+
+        # Nếu Office trống nhưng sheet này về nghiệp vụ chỉ thuộc HAD
+        if not office:
+            office = "HAD"
+
+        for col in month_cols:
+            month = normalize_month(col)
+            if month is None:
+                # Multi-header có thể kiểu "Apr-26 | Apr-26"
+                month = normalize_month(str(col).split("|")[0].strip())
+            if month is None:
+                continue
+
+            volume = pd.to_numeric(row[col], errors="coerce")
+            records.append({
+                "Office": office,
+                "Customer": customer,
+                "Month": month,
+                "Month Order": MONTH_ORDER.get(month),
+                "Month Label": month_label(month),
+                "Volume": volume,
+            })
+
+    long = pd.DataFrame(records)
+    if long.empty:
+        return long, pd.DataFrame()
+
+    # Không biến missing thành 0 trong data nguồn.
+    valid = long[long["Volume"].notna()].copy()
+
+    totals = (
+        valid.groupby(["Office", "Customer"], as_index=False)["Volume"]
+        .sum()
+        .rename(columns={"Volume": "Customer Total"})
+    )
+    return long, totals
+
+
+# ============================================================
+# 5. DATA SOURCE
+# ============================================================
+st.sidebar.markdown("## 📊 Dashboard")
+st.sidebar.caption("Workload • Capacity • Volume • Customer")
+
+uploaded_file = st.sidebar.file_uploader(
+    "Upload Excel workbook",
+    type=["xlsx", "xlsm"],
+    help="Chọn file Template data for Dashboard."
+)
+
+DEFAULT_FILE = Path("Template data for Dashboard.xlsx")
+
+if uploaded_file is not None:
+    file_bytes = uploaded_file.getvalue()
+    source_name = uploaded_file.name
+elif DEFAULT_FILE.exists():
+    file_bytes = DEFAULT_FILE.read_bytes()
+    source_name = DEFAULT_FILE.name
+else:
+    st.title("Executive Workload & Capacity Dashboard")
+    st.warning(
+        "Vui lòng upload file Excel ở sidebar. "
+        "Nếu muốn chạy không cần upload, đặt file cùng thư mục app.py và đổi tên thành "
+        "`Template data for Dashboard.xlsx`."
+    )
+    st.stop()
+
+
+# ============================================================
+# 6. LOAD & VALIDATE
+# ============================================================
+try:
+    sheet_names = get_sheet_names(file_bytes)
+    required_sheets = ["HC", "Shipment volume", "BU allocation", "N-S Customer list"]
+    missing = [s for s in required_sheets if s not in sheet_names]
+    if missing:
+        st.error(f"Thiếu sheet bắt buộc: {', '.join(missing)}")
+        st.stop()
+
+    hc = load_hc(file_bytes)
+    shipment_wide, shipment_long = load_shipment(file_bytes)
+    bu, bu_detail = load_bu(file_bytes)
+    customer_long, customer_total = load_customer(file_bytes)
+
+except Exception as exc:
+    st.error("Không thể đọc workbook hoặc cấu trúc file đã thay đổi.")
+    st.exception(exc)
+    st.stop()
+
+
+# ============================================================
+# 7. FILTERS
+# ============================================================
+all_offices = sorted(
+    set(hc["Office"].dropna())
+    | set(shipment_wide["Office"].dropna())
+    | set(bu["Office"].dropna())
+)
+all_offices = [x for x in all_offices if x]
+
+available_months = sorted(
+    set(hc.loc[hc["Data_Available"], "Month"].dropna())
+    | set(shipment_wide.loc[shipment_wide["Data_Available"], "Month"].dropna())
+    | set(bu.loc[bu["Data_Available"], "Month"].dropna()),
+    key=lambda x: MONTH_ORDER.get(x, 99),
+)
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("### Filters")
+
+office_filter = st.sidebar.multiselect(
+    "Office",
+    options=all_offices,
+    default=all_offices,
+)
+
+month_filter = st.sidebar.multiselect(
+    "Month",
+    options=available_months,
+    default=available_months,
+    format_func=month_label,
+)
+
+if not office_filter or not month_filter:
+    st.warning("Vui lòng chọn ít nhất 1 Office và 1 Month.")
+    st.stop()
+
+
+# ============================================================
+# 8. FILTERED DATA
+# ============================================================
+def apply_main_filter(df):
+    if df.empty:
+        return df
+    return df[
+        df["Office"].isin(office_filter)
+        & df["Month"].isin(month_filter)
+    ].copy()
+
+
+f_hc = apply_main_filter(hc)
+f_ship_wide = apply_main_filter(shipment_wide)
+f_ship_long = apply_main_filter(shipment_long)
+f_bu = apply_main_filter(bu)
+f_bu_detail = apply_main_filter(bu_detail)
+f_customer = apply_main_filter(customer_long) if not customer_long.empty else customer_long
+
+
+# ============================================================
+# 9. HEADER
+# ============================================================
+st.markdown(
+    '<div class="dashboard-title">EXECUTIVE WORKLOAD & CAPACITY DASHBOARD</div>',
+    unsafe_allow_html=True,
+)
+st.markdown(
+    f'<div class="dashboard-subtitle">Source: {source_name} &nbsp;|&nbsp; '
+    f'Office: {", ".join(office_filter)} &nbsp;|&nbsp; '
+    f'Month: {", ".join(month_label(m) for m in month_filter)}</div>',
+    unsafe_allow_html=True,
+)
+
+
+# ============================================================
+# 10. NAVIGATION
+# ============================================================
+page = st.sidebar.radio(
+    "Navigation",
+    ["Executive Overview", "Workload & Capacity", "Volume & Customer Analysis", "Data Quality"],
+)
+
+
+# ============================================================
+# 11. CALCULATIONS
+# ============================================================
+actual_hc = f_hc.loc[f_hc["Data_Available"], "Actual HC"].sum(min_count=1)
+required_hc = f_hc.loc[f_hc["Data_Available"], "Required HC"].sum(min_count=1)
+approved_hc = f_hc.loc[f_hc["Data_Available"], "Approved HC"].sum(min_count=1)
+
+# Network Capacity: weighted theo business logic = SUM Required / SUM Actual
+network_capacity = (
+    required_hc / actual_hc
+    if pd.notna(actual_hc) and actual_hc != 0 and pd.notna(required_hc)
+    else np.nan
+)
+
+total_volume = f_ship_wide.loc[
+    f_ship_wide["Data_Available"], "Total Shipment Volume"
+].sum(min_count=1)
+
+total_workload = f_bu.loc[
+    f_bu["Data_Available"], "Total Workload"
+].sum(min_count=1)
+
+
+# ============================================================
+# 12. PAGE 1 — EXECUTIVE OVERVIEW
+# ============================================================
+if page == "Executive Overview":
+    st.markdown('<div class="section-title">Executive Overview</div>', unsafe_allow_html=True)
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    with c1:
+        kpi_card(
+            "Actual HC",
+            f"{actual_hc:,.1f}" if pd.notna(actual_hc) else "No data",
+            "SUM of available Actual HC",
+        )
+    with c2:
+        kpi_card(
+            "Required HC",
+            f"{required_hc:,.1f}" if pd.notna(required_hc) else "No data",
+            "SUM of available Required HC",
+        )
+    with c3:
+        kpi_card(
+            "Network Capacity",
+            f"{network_capacity:.1%}" if pd.notna(network_capacity) else "No data",
+            "SUM Required HC / SUM Actual HC",
+        )
+    with c4:
+        kpi_card(
+            "Shipment Volume",
+            f"{total_volume:,.0f}" if pd.notna(total_volume) else "No data",
+            "Recalculated from transportation modes",
+        )
+    with c5:
+        kpi_card(
+            "Total Workload",
+            f"{total_workload:,.0f}" if pd.notna(total_workload) else "No data",
+            "SUM of available workload",
+        )
+
+    st.markdown(
+        '<div class="info-box"><b>Capacity logic:</b> Network Capacity is calculated as '
+        '<b>SUM(Required HC) / SUM(Actual HC)</b>, not the simple average of office percentages.</div>',
+        unsafe_allow_html=True,
+    )
+
+    left, right = st.columns(2)
+
     with left:
-        seg = data.groupby("Segment", as_index=False)["Total_Workload"].sum()
-        seg["Segment"] = pd.Categorical(seg["Segment"], SEGMENT_ORDER, ordered=True)
-        seg = seg.sort_values("Segment")
-        if not seg.empty:
-            fig = px.bar(seg, x="Segment", y="Total_Workload", text="Total_Workload", title="Workload by Segment")
-            fig.update_traces(marker_color=NAVY, texttemplate="%{text:,.0f}", textposition="outside")
-            fig = style_fig(fig, 390, legend=False)
-            fig.update_xaxes(title="")
-            fig.update_yaxes(title="Workload")
-            st.plotly_chart(fig, use_container_width=True, config=plot_config())
+        cap_data = f_hc[f_hc["Data_Available"]].copy()
+        if cap_data.empty:
+            no_data()
         else:
-            st.info("No workload allocation data available.")
+            cap_data = cap_data.sort_values(["Month Order", "Office"])
+            fig = px.bar(
+                cap_data,
+                x="Office",
+                y="Capacity %",
+                color="Capacity Status",
+                facet_col="Month Label" if cap_data["Month"].nunique() <= 3 else None,
+                category_orders={"Capacity Status": STATUS_ORDER},
+                color_discrete_map=STATUS_COLOR,
+                text=cap_data["Capacity %"].map(lambda x: f"{x:.0%}" if pd.notna(x) else ""),
+            )
+            fig.update_yaxes(tickformat=".0%")
+            fig.update_traces(textposition="outside", cliponaxis=False)
+            fig = fig_layout(fig, "Capacity by Office", 360)
+            st.plotly_chart(fig, use_container_width=True)
 
     with right:
-        components = pd.DataFrame({
-            "Component": ["Core", "Ancillary", "Supporting", "Exception"],
-            "Time": [data["Core_Time"].sum(), data["Ancillary_Time"].sum(), data["Supporting_Time"].sum(), data["Exception_Time"].sum()]
-        })
-        components = components[components["Time"].notna() & (components["Time"] != 0)]
-        if not components.empty:
-            fig = px.pie(components, names="Component", values="Time", hole=.55, title="Workload Components")
-            fig.update_traces(textinfo="percent+label")
-            fig = style_fig(fig, 390, legend=True)
-            st.plotly_chart(fig, use_container_width=True, config=plot_config())
+        vol_month = (
+            f_ship_wide[f_ship_wide["Data_Available"]]
+            .groupby(["Month", "Month Order", "Month Label"], as_index=False)["Total Shipment Volume"]
+            .sum()
+            .sort_values("Month Order")
+        )
+        if vol_month.empty:
+            no_data()
         else:
-            st.info("No workload component detail available for this selection.")
+            fig = px.line(
+                vol_month,
+                x="Month Label",
+                y="Total Shipment Volume",
+                markers=True,
+            )
+            fig.update_traces(line=dict(width=3), marker=dict(size=8))
+            fig = fig_layout(fig, "Shipment Volume Trend", 360, showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown('<div class="section-title">Workload Detail</div>', unsafe_allow_html=True)
-    disp = data[["Office","Month","Segment","Core_Time","Ancillary_Time","Supporting_Time","Exception_Time","Total_Workload","Network_Share"]].copy()
-    disp["Network_Share"] = disp["Network_Share"].map(lambda x: f"{x:.1%}" if pd.notna(x) else "")
-    st.dataframe(disp, use_container_width=True, hide_index=True)
+    left, right = st.columns(2)
 
-# ============================================================
-# CUSTOMER VOLUME
-# ============================================================
-elif page == "Customer Volume":
-    data = cust.copy()
-    if office != "All Offices":
-        data = data[data["Office"] == office]
-
-    # Determine FY columns found in workbook, preserving source order.
-    value_cols = [c for c in data.columns if c not in ["No", "Office", "Customer", "Total"]]
-    selected_period = None
-    if month != "All Months":
-        matching = [c for c in value_cols if str(c).startswith(month)]
-        selected_period = matching[0] if matching else None
-
-    metric_col = selected_period if selected_period else "Total"
-    metric_label = selected_period if selected_period else "FY Total"
-    ranked = data[["Office","Customer",metric_col]].copy()
-    ranked[metric_col] = pd.to_numeric(ranked[metric_col], errors="coerce").fillna(0)
-    ranked = ranked[ranked[metric_col] > 0].sort_values(metric_col, ascending=False)
-
-    c1, c2, c3, c4 = st.columns(4)
-    with c1: kpi_card("Customers", fmt_num(data["Customer"].nunique()), "Customers in selected office")
-    with c2: kpi_card(metric_label, fmt_num(ranked[metric_col].sum()), "Customer shipment volume")
-    with c3: kpi_card("Top Customer", ranked.iloc[0]["Customer"] if not ranked.empty else "-", "Highest shipment volume", accent="accent-orange")
-    with c4: kpi_card("Top Customer Volume", fmt_num(ranked.iloc[0][metric_col]) if not ranked.empty else "-", metric_label)
-
-    left, right = st.columns([1.2, 1], gap="large")
     with left:
-        top = ranked.head(15).sort_values(metric_col)
-        if not top.empty:
-            fig = px.bar(top, x=metric_col, y="Customer", orientation="h", text=metric_col, title=f"Top 15 Customers - {metric_label}")
-            fig.update_traces(marker_color=BLUE, texttemplate="%{text:,.0f}", textposition="outside")
-            fig = style_fig(fig, 500, legend=False)
-            fig.update_xaxes(title="Shipment volume")
-            fig.update_yaxes(title="")
-            st.plotly_chart(fig, use_container_width=True, config=plot_config())
+        wl_office = (
+            f_bu[f_bu["Data_Available"]]
+            .groupby("Office", as_index=False)["Total Workload"]
+            .sum()
+            .sort_values("Total Workload", ascending=True)
+        )
+        if wl_office.empty:
+            no_data()
         else:
-            st.info("No customer shipment data for the selected filters.")
+            fig = px.bar(
+                wl_office,
+                x="Total Workload",
+                y="Office",
+                orientation="h",
+                text_auto=".3s",
+            )
+            fig = fig_layout(fig, "Total Workload by Office", 340, showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
 
     with right:
-        if not ranked.empty:
-            top10 = ranked.head(10).copy()
-            total_ranked = ranked[metric_col].sum()
-            top10["Share"] = np.where(total_ranked > 0, top10[metric_col] / total_ranked, 0)
-            fig = go.Figure(go.Pie(labels=top10["Customer"], values=top10[metric_col], hole=.58))
-            fig.update_traces(textinfo="percent", hovertemplate="%{label}<br>%{value:,.0f}<br>%{percent}<extra></extra>")
-            fig.update_layout(title="Top 10 Customer Contribution")
-            fig = style_fig(fig, 500, legend=True)
-            st.plotly_chart(fig, use_container_width=True, config=plot_config())
+        hc_compare = (
+            f_hc[f_hc["Data_Available"]]
+            .groupby("Office", as_index=False)[["Approved HC", "Actual HC", "Required HC"]]
+            .sum(min_count=1)
+            .melt(id_vars="Office", var_name="HC Type", value_name="HC")
+        )
+        if hc_compare.empty:
+            no_data()
         else:
-            st.info("No customer contribution data available.")
+            fig = px.bar(
+                hc_compare,
+                x="Office",
+                y="HC",
+                color="HC Type",
+                barmode="group",
+                color_discrete_map={
+                    "Approved HC": LIGHT_BLUE,
+                    "Actual HC": BLUE,
+                    "Required HC": ORANGE,
+                },
+            )
+            fig = fig_layout(fig, "Approved vs Actual vs Required HC", 340)
+            st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown('<div class="section-title">Customer Volume Detail</div>', unsafe_allow_html=True)
-    detail_cols = ["Office","Customer"] + value_cols + ["Total"]
-    st.dataframe(data[detail_cols].sort_values("Total", ascending=False), use_container_width=True, hide_index=True)
 
-st.markdown("<div style='text-align:center;color:#8A98A8;font-size:11px;margin-top:24px;'>© 2026 CS | Internal Use Only</div>", unsafe_allow_html=True)
+# ============================================================
+# 13. PAGE 2 — WORKLOAD & CAPACITY
+# ============================================================
+elif page == "Workload & Capacity":
+    st.markdown('<div class="section-title">Workload & Capacity</div>', unsafe_allow_html=True)
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        kpi_card("Approved HC", f"{approved_hc:,.1f}" if pd.notna(approved_hc) else "No data")
+    with c2:
+        kpi_card("Actual HC", f"{actual_hc:,.1f}" if pd.notna(actual_hc) else "No data")
+    with c3:
+        kpi_card("Required HC", f"{required_hc:,.1f}" if pd.notna(required_hc) else "No data")
+    with c4:
+        kpi_card(
+            "Network Capacity",
+            f"{network_capacity:.1%}" if pd.notna(network_capacity) else "No data",
+            "Weighted network calculation",
+        )
+
+    left, right = st.columns(2)
+
+    with left:
+        cap = f_hc[f_hc["Data_Available"]].copy()
+        if cap.empty:
+            no_data()
+        else:
+            pivot = cap.pivot_table(
+                index="Office",
+                columns="Month Label",
+                values="Capacity %",
+                aggfunc="mean",
+            )
+            ordered_cols = [
+                month_label(m) for m in sorted(month_filter, key=lambda x: MONTH_ORDER[x])
+                if month_label(m) in pivot.columns
+            ]
+            pivot = pivot.reindex(columns=ordered_cols)
+
+            fig = go.Figure(
+                data=go.Heatmap(
+                    z=pivot.values,
+                    x=pivot.columns,
+                    y=pivot.index,
+                    text=np.where(
+                        pd.isna(pivot.values),
+                        "No data",
+                        np.vectorize(lambda x: f"{x:.0%}")(np.nan_to_num(pivot.values, nan=0))
+                    ),
+                    texttemplate="%{text}",
+                    hovertemplate="Office=%{y}<br>Month=%{x}<br>Capacity=%{text}<extra></extra>",
+                    zmin=0.80,
+                    zmax=1.10,
+                    colorscale=[
+                        [0.00, "#DCFCE7"],
+                        [0.45, "#DBEAFE"],
+                        [0.70, "#FEF3C7"],
+                        [1.00, "#FEE2E2"],
+                    ],
+                    colorbar=dict(tickformat=".0%"),
+                )
+            )
+            fig = fig_layout(fig, "Capacity Heatmap", 360, showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
+
+    with right:
+        hc_long = (
+            f_hc[f_hc["Data_Available"]]
+            .groupby(["Office", "Month", "Month Order", "Month Label"], as_index=False)[
+                ["Approved HC", "Actual HC", "Required HC"]
+            ]
+            .sum(min_count=1)
+            .melt(
+                id_vars=["Office", "Month", "Month Order", "Month Label"],
+                var_name="HC Type",
+                value_name="HC",
+            )
+        )
+        if hc_long.empty:
+            no_data()
+        else:
+            fig = px.bar(
+                hc_long,
+                x="Office",
+                y="HC",
+                color="HC Type",
+                barmode="group",
+                facet_col="Month Label" if hc_long["Month"].nunique() <= 3 else None,
+                color_discrete_map={
+                    "Approved HC": LIGHT_BLUE,
+                    "Actual HC": BLUE,
+                    "Required HC": ORANGE,
+                },
+            )
+            fig = fig_layout(fig, "HC Comparison", 360)
+            st.plotly_chart(fig, use_container_width=True)
+
+    left, right = st.columns(2)
+
+    with left:
+        wl_bu = (
+            f_bu[f_bu["Data_Available"] & f_bu["BU"].ne("")]
+            .groupby("BU", as_index=False)["Total Workload"]
+            .sum()
+            .sort_values("Total Workload", ascending=True)
+        )
+        if wl_bu.empty:
+            no_data("No workload breakdown available for selected filters.")
+        else:
+            fig = px.bar(
+                wl_bu,
+                x="Total Workload",
+                y="BU",
+                orientation="h",
+                text_auto=".3s",
+                category_orders={"BU": BU_ORDER},
+            )
+            fig = fig_layout(fig, "Workload by BU / Service Segment", 360, showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
+
+    with right:
+        wt = f_bu_detail[
+            f_bu_detail["Processing Time"].notna()
+        ].copy()
+
+        # Giá trị âm được giữ nguyên để phản ánh nguồn nhưng sẽ cảnh báo
+        wt_group = (
+            wt.groupby("Work Type", as_index=False)["Processing Time"]
+            .sum(min_count=1)
+        )
+        if wt_group.empty:
+            no_data("No Core/Ancillary/Supporting/Exception breakdown available.")
+        else:
+            fig = px.bar(
+                wt_group,
+                x="Work Type",
+                y="Processing Time",
+                category_orders={
+                    "Work Type": ["Core", "Ancillary", "Supporting", "Exception"]
+                },
+            )
+            fig = fig_layout(fig, "Processing Time by Work Type", 360, showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
+
+    # Workload vs Capacity — không dùng dual-axis mặc định vì khác đơn vị,
+    # thay bằng scatter để nhìn quan hệ dễ hơn.
+    joined_hc = (
+        f_hc[f_hc["Data_Available"]]
+        .groupby(["Office", "Month"], as_index=False)
+        .agg(
+            Actual_HC=("Actual HC", "sum"),
+            Required_HC=("Required HC", "sum"),
+        )
+    )
+    joined_hc["Capacity %"] = np.where(
+        joined_hc["Actual_HC"] != 0,
+        joined_hc["Required_HC"] / joined_hc["Actual_HC"],
+        np.nan,
+    )
+    joined_wl = (
+        f_bu[f_bu["Data_Available"]]
+        .groupby(["Office", "Month"], as_index=False)["Total Workload"]
+        .sum()
+    )
+    relation = joined_hc.merge(joined_wl, on=["Office", "Month"], how="inner")
+    relation["Month Label"] = relation["Month"].map(month_label)
+
+    if not relation.empty:
+        fig = px.scatter(
+            relation,
+            x="Total Workload",
+            y="Capacity %",
+            color="Office",
+            symbol="Month Label",
+            size="Actual_HC",
+            hover_data=["Required_HC", "Actual_HC"],
+        )
+        fig.add_hline(y=1.0, line_dash="dash", annotation_text="100% Overload threshold")
+        fig.add_hline(y=0.95, line_dash="dot", annotation_text="95%")
+        fig.update_yaxes(tickformat=".0%")
+        fig = fig_layout(fig, "Workload vs Capacity", 400)
+        st.plotly_chart(fig, use_container_width=True)
+
+
+# ============================================================
+# 14. PAGE 3 — VOLUME & CUSTOMER ANALYSIS
+# ============================================================
+elif page == "Volume & Customer Analysis":
+    st.markdown('<div class="section-title">Volume & Customer Analysis</div>', unsafe_allow_html=True)
+
+    # Page-specific filters
+    mode_options = sorted([
+        x for x in f_ship_long["Transportation Mode"].dropna().unique()
+        if clean_text(x)
+    ])
+    customer_options = sorted([
+        x for x in f_customer["Customer"].dropna().unique()
+    ]) if not f_customer.empty else []
+
+    f1, f2 = st.columns(2)
+    with f1:
+        selected_modes = st.multiselect(
+            "Transportation Mode",
+            mode_options,
+            default=mode_options,
+        )
+    with f2:
+        top_n = st.select_slider(
+            "Top Customers",
+            options=[5, 10, 15, 20],
+            value=10,
+        )
+
+    page_ship_long = f_ship_long[
+        f_ship_long["Transportation Mode"].isin(selected_modes)
+    ].copy()
+
+    mode_volume = page_ship_long["Volume"].sum(min_count=1)
+
+    # Active Customer không SUM xuyên nhiều tháng vì có thể double count.
+    # Chỉ hiển thị khi 1 tháng được chọn; nhiều tháng = N/A.
+    if len(month_filter) == 1:
+        active_customer_value = f_ship_wide.loc[
+            f_ship_wide["Data_Available"], "Active Customer"
+        ].sum(min_count=1)
+        active_display = (
+            f"{active_customer_value:,.0f}"
+            if pd.notna(active_customer_value)
+            else "No data"
+        )
+        active_note = "SUM across selected offices for one month"
+    else:
+        active_display = "N/A"
+        active_note = "Not aggregated across multiple months"
+
+    customer_data_available = (
+        not f_customer.empty and f_customer["Volume"].notna().any()
+    )
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        kpi_card(
+            "Shipment Volume",
+            f"{mode_volume:,.0f}" if pd.notna(mode_volume) else "No data",
+            "From transportation mode source",
+        )
+    with c2:
+        kpi_card("Active Customers", active_display, active_note)
+    with c3:
+        customer_volume = f_customer["Volume"].sum(min_count=1) if customer_data_available else np.nan
+        kpi_card(
+            "Customer-list Volume",
+            f"{customer_volume:,.0f}" if pd.notna(customer_volume) else "No data",
+            "Separate source — not reconciled with mode volume",
+        )
+
+    st.markdown(
+        '<div class="warning-box"><b>Data-quality rule:</b> Shipment Volume by mode and '
+        'Customer-list Volume are displayed as separate sources because the workbook currently '
+        'does not reconcile them. They are never added together.</div>',
+        unsafe_allow_html=True,
+    )
+
+    left, right = st.columns(2)
+
+    with left:
+        vol_office = (
+            page_ship_long.groupby("Office", as_index=False)["Volume"]
+            .sum(min_count=1)
+            .sort_values("Volume", ascending=True)
+        )
+        if vol_office.empty:
+            no_data()
+        else:
+            fig = px.bar(
+                vol_office,
+                x="Volume",
+                y="Office",
+                orientation="h",
+                text_auto=".3s",
+            )
+            fig = fig_layout(fig, "Shipment Volume by Office", 350, showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
+
+    with right:
+        vol_month = (
+            page_ship_long.groupby(
+                ["Month", "Month Order", "Month Label"], as_index=False
+            )["Volume"]
+            .sum(min_count=1)
+            .sort_values("Month Order")
+        )
+        if vol_month.empty:
+            no_data()
+        else:
+            fig = px.line(
+                vol_month,
+                x="Month Label",
+                y="Volume",
+                markers=True,
+            )
+            fig = fig_layout(fig, "Shipment Volume Trend", 350, showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
+
+    mode_breakdown = (
+        page_ship_long.groupby("Transportation Mode", as_index=False)["Volume"]
+        .sum(min_count=1)
+        .query("Volume != 0")
+        .sort_values("Volume", ascending=True)
+    )
+    if not mode_breakdown.empty:
+        fig = px.bar(
+            mode_breakdown,
+            x="Volume",
+            y="Transportation Mode",
+            orientation="h",
+            text_auto=".3s",
+        )
+        fig = fig_layout(fig, "Volume by Transportation Mode", 420, showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown('<div class="section-title">Customer Analysis</div>', unsafe_allow_html=True)
+
+    # Customer data hiện tại chỉ đáng tin cậy cho HAD.
+    if "HAD" not in office_filter:
+        no_data("Customer-level data is currently available only for HAD in the source workbook.")
+    elif not customer_data_available:
+        no_data("No customer-level data available for the selected month(s).")
+    else:
+        customer_filtered = f_customer[
+            (f_customer["Office"] == "HAD")
+            & f_customer["Volume"].notna()
+        ].copy()
+
+        cust_totals = (
+            customer_filtered.groupby("Customer", as_index=False)["Volume"]
+            .sum()
+            .sort_values("Volume", ascending=False)
+        )
+        overall_customer_volume = cust_totals["Volume"].sum()
+        cust_totals["Contribution %"] = np.where(
+            overall_customer_volume != 0,
+            cust_totals["Volume"] / overall_customer_volume,
+            np.nan,
+        )
+
+        top = cust_totals.head(top_n).sort_values("Volume", ascending=True)
+
+        left, right = st.columns(2)
+
+        with left:
+            fig = px.bar(
+                top,
+                x="Volume",
+                y="Customer",
+                orientation="h",
+                text_auto=".3s",
+            )
+            fig = fig_layout(fig, f"Top {top_n} Customers by Volume", 430, showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
+
+        with right:
+            pareto = cust_totals.copy()
+            pareto["Cumulative %"] = pareto["Volume"].cumsum() / pareto["Volume"].sum()
+            fig = go.Figure()
+            fig.add_bar(
+                x=pareto["Customer"].head(top_n),
+                y=pareto["Volume"].head(top_n),
+                name="Volume",
+            )
+            fig.add_scatter(
+                x=pareto["Customer"].head(top_n),
+                y=pareto["Cumulative %"].head(top_n),
+                name="Cumulative %",
+                yaxis="y2",
+                mode="lines+markers",
+            )
+            fig.update_layout(
+                yaxis2=dict(
+                    overlaying="y",
+                    side="right",
+                    tickformat=".0%",
+                    range=[0, 1.05],
+                    showgrid=False,
+                )
+            )
+            fig = fig_layout(fig, f"Customer Contribution — Top {top_n}", 430)
+            fig.update_xaxes(tickangle=-35)
+            st.plotly_chart(fig, use_container_width=True)
+
+        top_names = cust_totals.head(min(top_n, 10))["Customer"].tolist()
+        trend = (
+            customer_filtered[customer_filtered["Customer"].isin(top_names)]
+            .groupby(["Customer", "Month", "Month Order", "Month Label"], as_index=False)["Volume"]
+            .sum()
+            .sort_values("Month Order")
+        )
+        if not trend.empty:
+            fig = px.line(
+                trend,
+                x="Month Label",
+                y="Volume",
+                color="Customer",
+                markers=True,
+            )
+            fig = fig_layout(fig, "Monthly Customer Volume Trend", 430)
+            st.plotly_chart(fig, use_container_width=True)
+
+        st.dataframe(
+            cust_totals.rename(columns={"Volume": "Total Volume"}).style.format(
+                {"Total Volume": "{:,.0f}", "Contribution %": "{:.1%}"}
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+
+# ============================================================
+# 15. DATA QUALITY PAGE
+# ============================================================
+else:
+    st.markdown('<div class="section-title">Data Quality & Validation</div>', unsafe_allow_html=True)
+
+    st.markdown(
+        """
+        <div class="warning-box">
+        Dashboard intentionally keeps <b>Missing data ≠ Zero</b>. Missing Office/Month records
+        are excluded from KPI calculations instead of being filled with zero.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    quality_rows = []
+
+    for office in all_offices:
+        for month in FISCAL_MONTHS:
+            hc_ok = bool(
+                ((hc["Office"] == office) & (hc["Month"] == month) & hc["Data_Available"]).any()
+            )
+            ship_ok = bool(
+                ((shipment_wide["Office"] == office) & (shipment_wide["Month"] == month) & shipment_wide["Data_Available"]).any()
+            )
+            bu_ok = bool(
+                ((bu["Office"] == office) & (bu["Month"] == month) & bu["Data_Available"]).any()
+            )
+            cust_ok = bool(
+                not customer_long.empty
+                and (
+                    (customer_long["Office"] == office)
+                    & (customer_long["Month"] == month)
+                    & customer_long["Volume"].notna()
+                ).any()
+            )
+
+            quality_rows.append({
+                "Office": office,
+                "Month": month_label(month),
+                "HC": "Available" if hc_ok else "No data",
+                "Shipment": "Available" if ship_ok else "No data",
+                "BU Allocation": "Available" if bu_ok else "No data",
+                "Customer": "Available" if cust_ok else "No data",
+            })
+
+    quality_df = pd.DataFrame(quality_rows)
+
+    st.markdown("#### Data Availability Matrix")
+    st.dataframe(
+        quality_df,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    # Negative processing time check
+    neg = bu_detail[bu_detail["Processing Time"] < 0].copy()
+    st.markdown("#### Flagged Issues")
+
+    issue_count = 0
+
+    if not neg.empty:
+        issue_count += 1
+        st.warning(
+            f"Found {len(neg)} record(s) with negative Processing Time. "
+            "These values are kept as source data and are not auto-corrected."
+        )
+        st.dataframe(
+            neg[["Office", "Month Label", "BU", "Work Type", "Processing Time"]],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    # BU suspicious Office rows check, based on source observation
+    suspicious = bu[
+        (bu["Month"].isin(["Apr", "May"]))
+        & (bu["Office"] == "HAN")
+        & bu["BU"].isin(["TR", "WH"])
+    ]
+    if not suspicious.empty:
+        issue_count += 1
+        st.warning(
+            "BU allocation contains rows that may require Office validation. "
+            "Dashboard does not automatically relabel them."
+        )
+
+    # Reconciliation example
+    if "HAD" in shipment_wide["Office"].values and not customer_long.empty:
+        ship_had = (
+            shipment_wide[
+                (shipment_wide["Office"] == "HAD")
+                & shipment_wide["Data_Available"]
+            ]
+            .groupby("Month", as_index=False)["Total Shipment Volume"]
+            .sum()
+        )
+        cust_had = (
+            customer_long[
+                (customer_long["Office"] == "HAD")
+                & customer_long["Volume"].notna()
+            ]
+            .groupby("Month", as_index=False)["Volume"]
+            .sum()
+        )
+        recon = ship_had.merge(cust_had, on="Month", how="outer")
+        recon["Difference"] = recon["Volume"] - recon["Total Shipment Volume"]
+        recon["Month Order"] = recon["Month"].map(MONTH_ORDER)
+        recon["Month"] = recon["Month"].map(month_label)
+        recon = recon.sort_values("Month Order")
+
+        if not recon.empty:
+            issue_count += 1
+            st.markdown("##### Shipment vs Customer-list Reconciliation — HAD")
+            st.dataframe(
+                recon[["Month", "Total Shipment Volume", "Volume", "Difference"]]
+                .rename(columns={
+                    "Total Shipment Volume": "Shipment Source",
+                    "Volume": "Customer-list Source",
+                }),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+    if issue_count == 0:
+        st.success("No flagged data-quality issue was detected by the current checks.")
+
+
+# ============================================================
+# 16. FOOTER
+# ============================================================
+st.markdown(
+    '<div class="footer">Internal management dashboard • '
+    'Missing data is not treated as zero • Source workbook remains unchanged</div>',
+    unsafe_allow_html=True,
+)
