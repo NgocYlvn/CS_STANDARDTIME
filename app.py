@@ -403,6 +403,13 @@ if "office_filter" not in st.session_state:
 if "month_filter" not in st.session_state:
     st.session_state.month_filter = "All Months"
 
+# IMPORTANT: reset widget values via callback.
+# Streamlit executes callbacks before widgets are recreated on the next rerun,
+# avoiding StreamlitAPIException from modifying a widget key after instantiation.
+def reset_filters():
+    st.session_state["office_filter"] = "All Offices"
+    st.session_state["month_filter"] = "All Months"
+
 meta_office = st.session_state.office_filter
 meta_month = st.session_state.month_filter
 st.markdown(
@@ -435,10 +442,12 @@ with fc2:
     month = st.selectbox("Month", ["All Months"] + available_months, key="month_filter")
 with fc3:
     st.markdown("<div style='height:1.72rem'></div>", unsafe_allow_html=True)
-    if st.button("↻  Reset Filters", use_container_width=True):
-        st.session_state.office_filter = "All Offices"
-        st.session_state.month_filter = "All Months"
-        st.rerun()
+    st.button(
+        "↻  Reset Filters",
+        use_container_width=True,
+        on_click=reset_filters,
+        key="reset_filters_button",
+    )
 
 st.markdown('<div class="filter-divider"></div>', unsafe_allow_html=True)
 
