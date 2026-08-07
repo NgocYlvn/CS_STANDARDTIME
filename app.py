@@ -568,19 +568,54 @@ elif page == "HC Capacity":
     with c3: kpi_card("Required HC", fmt_num(required, 1), "Workload-based requirement")
     with c4: kpi_card("Average Capacity", f"{avg_cap:.1%}" if pd.notna(avg_cap) else "-", f"HC gap: {fmt_num(gap, 1)}", accent="accent-orange" if pd.notna(avg_cap) and avg_cap > 1 else "accent-green")
 
-    left, right = st.columns([1.25, 1], gap="large")
+    left, right = st.columns([1.15, 1], gap="large")
+
     with left:
         chart = valid.copy()
         if not chart.empty:
             chart["_m"] = month_sort_key(chart["Month"])
-            chart = chart.sort_values(["Office", "_m"])
-            long = chart.melt(id_vars=["Office", "Month"], value_vars=["Actual_Total", "Required_Total"], var_name="HC Type", value_name="HC")
-            long["HC Type"] = long["HC Type"].map({"Actual_Total":"Actual HC", "Required_Total":"Required HC"})
-            long["Period"] = long["Office"] + " - " + long["Month"]
-            fig = px.bar(long, x="Period", y="HC", color="HC Type", barmode="group", title="Actual vs Required HC")
-            fig = style_fig(fig, 390, legend=True)
-            fig.update_xaxes(title="")
-            fig.update_yaxes(title="Headcount")
+            chart = chart.sort_values(["Office", "_m"], ascending=[True, True])
+            chart["Period"] = chart["Office"].astype(str) + " · " + chart["Month"].astype(str)
+
+            # Horizontal grouped bars make small HC differences easier to compare.
+            fig = go.Figure()
+            fig.add_trace(
+                go.Bar(
+                    y=chart["Period"],
+                    x=chart["Actual_Total"],
+                    name="Actual HC",
+                    orientation="h",
+                    marker_color=NAVY,
+                    text=chart["Actual_Total"],
+                    texttemplate="%{text:.1f}",
+                    textposition="outside",
+                    cliponaxis=False,
+                    hovertemplate="%{y}<br>Actual HC: %{x:.1f}<extra></extra>",
+                )
+            )
+            fig.add_trace(
+                go.Bar(
+                    y=chart["Period"],
+                    x=chart["Required_Total"],
+                    name="Required HC",
+                    orientation="h",
+                    marker_color=ORANGE,
+                    text=chart["Required_Total"],
+                    texttemplate="%{text:.1f}",
+                    textposition="outside",
+                    cliponaxis=False,
+                    hovertemplate="%{y}<br>Required HC: %{x:.1f}<extra></extra>",
+                )
+            )
+            fig.update_layout(barmode="group")
+            fig = style_fig(fig, max(360, 58 * len(chart) + 95), legend=True)
+            fig.update_layout(
+                title=dict(text="Actual vs Required HC", x=0, xanchor="left"),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+                margin=dict(l=10, r=44, t=72, b=20),
+            )
+            fig.update_xaxes(title="Headcount", rangemode="tozero", gridcolor="#E9EEF5")
+            fig.update_yaxes(title="", autorange="reversed", automargin=True)
             st.plotly_chart(fig, use_container_width=True, config=plot_config())
         else:
             st.info("No actual/required HC data available.")
@@ -588,16 +623,72 @@ elif page == "HC Capacity":
     with right:
         cap = valid.copy()
         if not cap.empty:
-            cap["Capacity %"] = cap["Capacity"] * 100
-            cap["Period"] = cap["Office"] + " - " + cap["Month"]
-            fig = px.bar(cap, x="Period", y="Capacity %", title="Capacity Utilization")
-            fig.update_traces(marker_color=BLUE)
-            fig.add_hrect(y0=100, y1=max(115, cap["Capacity %"].max()+5), fillcolor=RED, opacity=.06, line_width=0)
-            fig.add_hline(y=100, line_dash="dash", line_color=RED)
-            fig = style_fig(fig, 390, legend=False)
-            fig.update_yaxes(title="Required / Actual HC (%)")
-            fig.update_xaxes(title="")
+            cap["_m"] = month_sort_key(cap["Month"])
+            cap = cap.sort_values(["Office", "_m"], ascending=[True, True])
+            cap["Capacity %"] = pd.to_numeric(cap["Capacity"], errors="coerce") * 100
+            cap["Period"] = cap["Office"].astype(str) + " · " + cap["Month"].astype(str)
+
+            # 100% = Required HC equals Actual HC.
+            # >100% means required HC exceeds actual HC -> capacity shortage.
+            cap["Status"] = np.select(
+                [
+                    cap["Capacity %"] > 100,
+                    cap["Capacity %"] >= 95,
+                ],
+                ["Over Capacity", "Near Full"],
+                default="Available Capacity",
+            )
+            status_colors = {
+                "Available Capacity": GREEN,
+                "Near Full": AMBER,
+                "Over Capacity": RED,
+            }
+            bar_colors = cap["Status"].map(status_colors).tolist()
+
+            axis_max = max(110, float(cap["Capacity %"].max()) + 10)
+            fig = go.Figure(
+                go.Bar(
+                    y=cap["Period"],
+                    x=cap["Capacity %"],
+                    orientation="h",
+                    marker_color=bar_colors,
+                    text=cap["Capacity %"],
+                    texttemplate="%{text:.1f}%",
+                    textposition="outside",
+                    cliponaxis=False,
+                    customdata=cap[["Status"]],
+                    hovertemplate=(
+                        "%{y}<br>Capacity utilization: %{x:.1f}%"
+                        "<br>Status: %{customdata[0]}<extra></extra>"
+                    ),
+                )
+            )
+            fig.add_vrect(x0=100, x1=axis_max, fillcolor=RED, opacity=.045, line_width=0)
+            fig.add_vline(
+                x=100,
+                line_dash="dash",
+                line_color=RED,
+                line_width=1.5,
+                annotation_text="100% capacity",
+                annotation_position="top",
+            )
+            fig = style_fig(fig, max(360, 58 * len(cap) + 95), legend=False)
+            fig.update_layout(
+                title=dict(text="Capacity Utilization", x=0, xanchor="left"),
+                margin=dict(l=10, r=50, t=72, b=20),
+            )
+            fig.update_xaxes(
+                title="Required HC / Actual HC (%)",
+                range=[0, axis_max],
+                ticksuffix="%",
+                gridcolor="#E9EEF5",
+            )
+            fig.update_yaxes(title="", autorange="reversed", automargin=True)
             st.plotly_chart(fig, use_container_width=True, config=plot_config())
+
+            st.caption(
+                "🟢 <95%: available capacity   |   🟠 95–100%: near full   |   🔴 >100%: required HC exceeds actual HC"
+            )
         else:
             st.info("No capacity utilization data available.")
 
