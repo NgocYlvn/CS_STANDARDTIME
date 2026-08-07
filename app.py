@@ -1,4 +1,5 @@
 import os
+import html
 from pathlib import Path
 
 import numpy as np
@@ -41,32 +42,79 @@ MODE_COLS = ["AI", "AE", "OILCL", "OIFCL", "OELCL", "OEFCL", "DI", "DE", "DM", "
 st.markdown(
     f"""
     <style>
-        .stApp {{background:{LIGHT_BG};}}
-        .block-container {{padding-top:1.2rem; padding-bottom:2rem; max-width:1600px;}}
-        [data-testid="stSidebar"] {{background:{NAVY};}}
-        [data-testid="stSidebar"] * {{color:white;}}
+        :root {{
+            --navy: {NAVY};
+            --blue: {BLUE};
+            --orange: {ORANGE};
+            --green: {GREEN};
+            --amber: {AMBER};
+            --red: {RED};
+            --text: #172033;
+            --muted: #667085;
+            --line: #DCE5F0;
+            --panel: #FFFFFF;
+            --page: {LIGHT_BG};
+        }}
+
+        html, body, [class*="css"] {{font-family: Arial, "Segoe UI", sans-serif;}}
+        .stApp {{background:var(--page); color:var(--text);}}
+        [data-testid="stHeader"] {{height:3.25rem; background:var(--page);}}
+        [data-testid="stToolbar"] {{top:.35rem;}}
+        .block-container {{max-width:1600px; padding-top:1.65rem; padding-bottom:2rem;}}
+
+        [data-testid="stSidebar"] {{background:linear-gradient(180deg,#073472 0%,#0B4D9B 100%);}}
+        [data-testid="stSidebar"] * {{color:#FFFFFF;}}
         [data-testid="stSidebar"] .stSelectbox label,
-        [data-testid="stSidebar"] .stRadio label {{color:white !important;}}
+        [data-testid="stSidebar"] .stRadio label {{color:#FFFFFF !important; font-weight:600;}}
         [data-testid="stSidebar"] div[data-baseweb="select"] * {{color:#17324D !important;}}
-        [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {{
-            background:rgba(255,255,255,.06); border-radius:8px; padding:7px 10px; margin-bottom:3px;
+
+        .dashboard-title {{
+            display:block; position:static; font-size:1.9rem; line-height:1.15;
+            font-weight:800; color:{NAVY} !important; opacity:1 !important;
+            filter:none !important; text-shadow:none !important; -webkit-text-fill-color:{NAVY} !important;
+            margin:0 0 .35rem 0; letter-spacing:-.02em;
         }}
-        .dashboard-title {{font-size:30px; font-weight:800; color:{NAVY}; margin-bottom:2px;}}
-        .dashboard-subtitle {{font-size:14px; color:{MUTED}; margin-bottom:14px;}}
-        .section-title {{font-size:19px; font-weight:750; color:{NAVY}; margin:10px 0 8px 0;}}
+        .dashboard-subtitle {{
+            display:block; color:#667085 !important; font-size:.82rem; line-height:1.2;
+            margin:0 0 .75rem 0;
+        }}
+        .dashboard-filter {{
+            color:#667085; font-size:.76rem; margin:-.25rem 0 .9rem 0;
+        }}
+
+        .section-title {{
+            background:var(--navy); color:#FFFFFF; padding:.52rem .8rem;
+            border-radius:10px 10px 0 0; font-size:.95rem; font-weight:750;
+            margin-top:.25rem; margin-bottom:0;
+        }}
+
         .kpi-card {{
-            background:white; border:1px solid {BORDER}; border-radius:14px;
-            padding:16px 18px; min-height:112px; box-shadow:0 1px 2px rgba(15, 23, 42, .04);
+            background:var(--panel); border:1px solid var(--line); border-radius:12px;
+            height:142px; min-height:142px; max-height:142px; display:flex;
+            flex-direction:column; justify-content:center; align-items:center;
+            box-sizing:border-box; overflow:hidden; box-shadow:0 2px 10px rgba(28,54,89,.05);
+            padding:0 12px;
         }}
-        .kpi-label {{font-size:12px; font-weight:700; color:{MUTED}; text-transform:uppercase; letter-spacing:.3px;}}
-        .kpi-value {{font-size:31px; font-weight:800; color:{NAVY}; line-height:1.15; margin-top:6px;}}
-        .kpi-note {{font-size:12px; color:{MUTED}; margin-top:5px;}}
-        .panel {{background:white; border:1px solid {BORDER}; border-radius:14px; padding:12px 14px;}}
-        .status-ok {{color:{GREEN}; font-weight:700;}}
-        .status-warn {{color:{AMBER}; font-weight:700;}}
-        .status-bad {{color:{RED}; font-weight:700;}}
-        div[data-testid="stDataFrame"] {{background:white; border-radius:12px;}}
-        h1,h2,h3 {{color:{NAVY};}}
+        .kpi-label {{
+            color:var(--navy); font-size:.88rem; font-weight:700; text-align:center;
+            margin-bottom:12px; text-transform:none; letter-spacing:0;
+        }}
+        .kpi-value {{
+            font-size:2.25rem; font-weight:800; line-height:1; color:var(--blue);
+            text-align:center; margin:0;
+        }}
+        .kpi-note {{
+            color:var(--muted); font-size:.71rem; line-height:1.2; margin-top:.48rem;
+            text-align:center; padding:0 .4rem;
+        }}
+        .accent-orange .kpi-value {{color:var(--orange);}}
+        .accent-green .kpi-value {{color:var(--green);}}
+        .accent-amber .kpi-value {{color:var(--amber);}}
+        .accent-red .kpi-value {{color:var(--red);}}
+
+        .panel {{background:white; border:1px solid var(--line); border-radius:12px; padding:12px 14px;}}
+        div[data-testid="stDataFrame"] {{border:1px solid var(--line); border-radius:10px; overflow:hidden;}}
+        h1,h2,h3 {{color:var(--navy);}}
     </style>
     """,
     unsafe_allow_html=True,
@@ -83,13 +131,17 @@ def fmt_num(v, decimals=0):
     return f"{v:,.{decimals}f}"
 
 
-def kpi_card(label, value, note=""):
+def kpi_card(label, value, note="", accent=""):
+    note_html = (
+        f'<div class="kpi-note">{html.escape(str(note))}</div>'
+        if note else ""
+    )
     st.markdown(
         f"""
-        <div class="kpi-card">
-            <div class="kpi-label">{label}</div>
-            <div class="kpi-value">{value}</div>
-            <div class="kpi-note">{note}</div>
+        <div class="kpi-card {accent}">
+            <div class="kpi-label">{html.escape(str(label))}</div>
+            <div class="kpi-value">{html.escape(str(value))}</div>
+            {note_html}
         </div>
         """,
         unsafe_allow_html=True,
@@ -250,6 +302,15 @@ except Exception as e:
     st.error(f"Cannot read workbook: {e}")
     st.stop()
 
+# Last-updated label for the dashboard header.
+if uploaded is not None:
+    data_date = "Uploaded file"
+else:
+    try:
+        data_date = pd.Timestamp(Path(source).stat().st_mtime, unit="s").strftime("%d %b %Y")
+    except Exception:
+        data_date = "Not available"
+
 # Global filters
 all_offices = sorted(set(hc["Office"].dropna()) | set(ship["Office"].dropna()) | set(bu["Office"].dropna()))
 with st.sidebar:
@@ -277,8 +338,12 @@ bu_f = filtered(bu, office, month)
 # HEADER
 # ============================================================
 st.markdown('<div class="dashboard-title">CS WORKLOAD & CAPACITY DASHBOARD</div>', unsafe_allow_html=True)
-filter_text = f"Office: {office}  •  Month: {month}"
-st.markdown(f'<div class="dashboard-subtitle">FY2026 workforce capacity, shipment volume and workload allocation &nbsp; | &nbsp; {filter_text}</div>', unsafe_allow_html=True)
+st.markdown(
+    f'<div class="dashboard-subtitle">📅 Last Updated: {data_date}</div>',
+    unsafe_allow_html=True,
+)
+filter_text = f"FY2026 &nbsp; • &nbsp; Office: {office} &nbsp; • &nbsp; Month: {month}"
+st.markdown(f'<div class="dashboard-filter">{filter_text}</div>', unsafe_allow_html=True)
 
 # ============================================================
 # OVERVIEW
@@ -301,8 +366,8 @@ if page == "Overview":
     with c2: kpi_card("Required HC", fmt_num(required_hc, 1), "Calculated workforce requirement")
     with c3:
         cap_note = "Overload" if pd.notna(capacity) and capacity > 1 else "Within capacity"
-        kpi_card("Capacity Load", f"{capacity:.1%}" if pd.notna(capacity) else "-", cap_note)
-    with c4: kpi_card("Shipment Volume", fmt_num(total_ship), "Total shipments in selected period")
+        kpi_card("Capacity Load", f"{capacity:.1%}" if pd.notna(capacity) else "-", cap_note, accent="accent-orange" if pd.notna(capacity) and capacity > 1 else "accent-green")
+    with c4: kpi_card("Shipment Volume", fmt_num(total_ship), "Total shipments in selected period", accent="accent-orange")
     with c5: kpi_card("Total Workload", fmt_num(workload), "Processing time / workload units")
 
     st.markdown('<div class="section-title">Management Overview</div>', unsafe_allow_html=True)
@@ -377,7 +442,7 @@ elif page == "HC Capacity":
     with c1: kpi_card("Approved HC", fmt_num(data["Approved_Total"].sum(min_count=1)), "Approved headcount")
     with c2: kpi_card("Actual HC", fmt_num(actual), "Actual headcount")
     with c3: kpi_card("Required HC", fmt_num(required, 1), "Workload-based requirement")
-    with c4: kpi_card("Average Capacity", f"{avg_cap:.1%}" if pd.notna(avg_cap) else "-", f"HC gap: {fmt_num(gap, 1)}")
+    with c4: kpi_card("Average Capacity", f"{avg_cap:.1%}" if pd.notna(avg_cap) else "-", f"HC gap: {fmt_num(gap, 1)}", accent="accent-orange" if pd.notna(avg_cap) and avg_cap > 1 else "accent-green")
 
     left, right = st.columns([1.25, 1], gap="large")
     with left:
@@ -432,7 +497,7 @@ elif page == "Shipment Volume":
     c1, c2, c3, c4 = st.columns(4)
     with c1: kpi_card("Total Shipment", fmt_num(total), "Selected office/month scope")
     with c2: kpi_card("Active Customer", fmt_num(active), "Sum of reported active customers")
-    with c3: kpi_card("Top Mode", top_mode, f"{fmt_num(top_mode_vol)} shipments" if pd.notna(top_mode_vol) else "")
+    with c3: kpi_card("Top Mode", top_mode, f"{fmt_num(top_mode_vol)} shipments" if pd.notna(top_mode_vol) else "", accent="accent-orange")
     with c4:
         avg_per_cust = total/active if pd.notna(total) and pd.notna(active) and active else np.nan
         kpi_card("Shipment / Customer", fmt_num(avg_per_cust, 1), "Average volume per active customer")
@@ -484,7 +549,7 @@ elif page == "Workload Allocation":
     c1, c2, c3, c4 = st.columns(4)
     with c1: kpi_card("Total Workload", fmt_num(total_work), "All workload components")
     with c2: kpi_card("Largest Segment", largest_seg, f"{largest_share:.1%} of workload" if pd.notna(largest_share) else "")
-    with c3: kpi_card("Exception Time", fmt_num(exception_time), "Exception handling workload")
+    with c3: kpi_card("Exception Time", fmt_num(exception_time), "Exception handling workload", accent="accent-amber")
     with c4: kpi_card("Segments", fmt_num(data["Segment"].nunique()), "Active business segments")
 
     left, right = st.columns([1.15, 1], gap="large")
@@ -545,7 +610,7 @@ elif page == "Customer Volume":
     c1, c2, c3, c4 = st.columns(4)
     with c1: kpi_card("Customers", fmt_num(data["Customer"].nunique()), "Customers in selected office")
     with c2: kpi_card(metric_label, fmt_num(ranked[metric_col].sum()), "Customer shipment volume")
-    with c3: kpi_card("Top Customer", ranked.iloc[0]["Customer"] if not ranked.empty else "-", "Highest shipment volume")
+    with c3: kpi_card("Top Customer", ranked.iloc[0]["Customer"] if not ranked.empty else "-", "Highest shipment volume", accent="accent-orange")
     with c4: kpi_card("Top Customer Volume", fmt_num(ranked.iloc[0][metric_col]) if not ranked.empty else "-", metric_label)
 
     left, right = st.columns([1.2, 1], gap="large")
