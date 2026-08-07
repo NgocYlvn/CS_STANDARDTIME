@@ -53,68 +53,91 @@ st.markdown(
             --muted: #667085;
             --line: #DCE5F0;
             --panel: #FFFFFF;
-            --page: {LIGHT_BG};
+            --page: #FFFFFF;
         }}
 
         html, body, [class*="css"] {{font-family: Arial, "Segoe UI", sans-serif;}}
-        .stApp {{background:var(--page); color:var(--text);}}
-        [data-testid="stHeader"] {{height:3.25rem; background:var(--page);}}
-        [data-testid="stToolbar"] {{top:.35rem;}}
-        .block-container {{max-width:1600px; padding-top:1.65rem; padding-bottom:2rem;}}
+        .stApp {{background:#FFFFFF; color:var(--text);}}
+        [data-testid="stHeader"] {{height:2.45rem; background:#FFFFFF;}}
+        [data-testid="stToolbar"] {{top:.20rem;}}
+        .block-container {{max-width:1700px; padding-top:.45rem; padding-bottom:1.2rem; padding-left:2rem; padding-right:2rem;}}
 
-        [data-testid="stSidebar"] {{background:linear-gradient(180deg,#073472 0%,#0B4D9B 100%);}}
+        /* SIDEBAR */
+        [data-testid="stSidebar"] {{
+            background:linear-gradient(180deg,#073472 0%,#0B4D9B 100%);
+            border-right:none;
+        }}
+        [data-testid="stSidebar"] > div:first-child {{padding-top:.6rem;}}
         [data-testid="stSidebar"] * {{color:#FFFFFF;}}
-        [data-testid="stSidebar"] .stSelectbox label,
-        [data-testid="stSidebar"] .stRadio label {{color:#FFFFFF !important; font-weight:600;}}
-        [data-testid="stSidebar"] div[data-baseweb="select"] * {{color:#17324D !important;}}
+        [data-testid="stSidebar"] div[role="radiogroup"] {{gap:.35rem;}}
+        [data-testid="stSidebar"] label[data-baseweb="radio"] {{
+            padding:.68rem .7rem; border-radius:0; margin:0; width:100%;
+        }}
+        [data-testid="stSidebar"] label[data-baseweb="radio"]:has(input:checked) {{
+            background:rgba(11,99,206,.55); border-left:4px solid #ED6B21;
+        }}
+        [data-testid="stSidebar"] .stRadio label {{font-weight:700; font-size:.92rem;}}
+        .side-brand {{padding:.35rem .2rem .5rem .2rem;}}
+        .side-brand-title {{font-size:1.05rem;font-weight:800;line-height:1.2;color:white;}}
+        .side-brand-sub {{font-size:.76rem;color:#D8E5F8;margin-top:.25rem;}}
+        .side-footer {{position:relative;margin-top:12rem;color:#D8E5F8;font-size:.72rem;line-height:1.65;}}
 
+        /* COMPACT HEADER */
         .dashboard-title {{
-            display:block; position:static; font-size:1.9rem; line-height:1.15;
-            font-weight:800; color:{NAVY} !important; opacity:1 !important;
-            filter:none !important; text-shadow:none !important; -webkit-text-fill-color:{NAVY} !important;
-            margin:0 0 .35rem 0; letter-spacing:-.02em;
+            font-size:1.62rem; line-height:1.05; font-weight:850; color:{NAVY} !important;
+            margin:0 0 .18rem 0; letter-spacing:-.02em;
         }}
         .dashboard-subtitle {{
-            display:block; color:#667085 !important; font-size:.82rem; line-height:1.2;
-            margin:0 0 .75rem 0;
+            color:#667085 !important; font-size:.78rem; line-height:1.15; margin:0 0 .22rem 0;
         }}
         .dashboard-filter {{
-            color:#667085; font-size:.76rem; margin:-.25rem 0 .9rem 0;
+            color:#667085; font-size:.74rem; line-height:1.15; margin:0 0 .48rem 0;
         }}
+        .orange-rule {{height:3px;background:#ED6B21;margin:0 -2rem .65rem -2rem;}}
 
-        .section-title {{
-            background:var(--navy); color:#FFFFFF; padding:.52rem .8rem;
-            border-radius:10px 10px 0 0; font-size:.95rem; font-weight:750;
-            margin-top:.25rem; margin-bottom:0;
+        /* FILTER BAR */
+        .filter-label {{font-size:.74rem;color:#667085;font-weight:600;margin-bottom:.1rem;}}
+        div[data-baseweb="select"] > div {{min-height:38px !important; border-color:#D7E0EA !important;}}
+        .stButton > button {{
+            border:1px solid #ED6B21; color:#ED6B21; background:#FFFFFF;
+            border-radius:8px; font-weight:700; min-height:38px;
         }}
+        .stButton > button:hover {{border-color:#ED6B21;color:#ED6B21;background:#FFF7F0;}}
+        .filter-divider {{height:1px;background:#E7ECF2;margin:.45rem -2rem 1rem -2rem;}}
 
+        /* KPI */
         .kpi-card {{
-            background:var(--panel); border:1px solid var(--line); border-radius:12px;
-            height:142px; min-height:142px; max-height:142px; display:flex;
-            flex-direction:column; justify-content:center; align-items:center;
-            box-sizing:border-box; overflow:hidden; box-shadow:0 2px 10px rgba(28,54,89,.05);
-            padding:0 12px;
+            background:#FFFFFF; border:1px solid #E1E7EF; border-radius:12px;
+            height:190px; min-height:190px; max-height:190px; display:flex;
+            flex-direction:column; justify-content:space-between; align-items:center;
+            box-sizing:border-box; overflow:hidden; box-shadow:0 2px 10px rgba(28,54,89,.08);
+            padding:1.05rem .75rem .9rem .75rem;
         }}
         .kpi-label {{
-            color:var(--navy); font-size:.88rem; font-weight:700; text-align:center;
-            margin-bottom:12px; text-transform:none; letter-spacing:0;
+            color:var(--navy); font-size:.79rem; font-weight:800; text-align:center;
+            line-height:1.22; min-height:2.1rem; display:flex; align-items:center; justify-content:center;
         }}
         .kpi-value {{
-            font-size:2.25rem; font-weight:800; line-height:1; color:var(--blue);
-            text-align:center; margin:0;
+            font-size:2.0rem; font-weight:850; line-height:1; color:var(--navy);
+            text-align:center; margin:.15rem 0;
         }}
         .kpi-note {{
-            color:var(--muted); font-size:.71rem; line-height:1.2; margin-top:.48rem;
-            text-align:center; padding:0 .4rem;
+            color:#667085; font-size:.69rem; line-height:1.2; text-align:center; min-height:1rem;
         }}
         .accent-orange .kpi-value {{color:var(--orange);}}
         .accent-green .kpi-value {{color:var(--green);}}
         .accent-amber .kpi-value {{color:var(--amber);}}
         .accent-red .kpi-value {{color:var(--red);}}
 
-        .panel {{background:white; border:1px solid var(--line); border-radius:12px; padding:12px 14px;}}
+        /* PANELS */
+        .section-title {{
+            background:transparent; color:var(--navy); padding:0; border-radius:0;
+            font-size:.82rem; font-weight:850; margin:.1rem 0 .3rem 0; letter-spacing:.01em;
+        }}
+        [data-testid="stVerticalBlockBorderWrapper"] {{border-color:#E1E7EF !important;border-radius:12px !important;box-shadow:0 2px 10px rgba(28,54,89,.06);}}
         div[data-testid="stDataFrame"] {{border:1px solid var(--line); border-radius:10px; overflow:hidden;}}
         h1,h2,h3 {{color:var(--navy);}}
+        .small-note {{font-size:.68rem;color:#667085;margin-top:.2rem;}}
     </style>
     """,
     unsafe_allow_html=True,
@@ -281,16 +304,35 @@ def style_fig(fig, height=350, legend=True):
 # SIDEBAR / DATA SOURCE
 # ============================================================
 with st.sidebar:
-    st.markdown("## 📊 CS Workload")
-    st.caption("Capacity & Shipment Dashboard")
-    st.markdown("---")
+    st.markdown(
+        """
+        <div class="side-brand">
+            <div class="side-brand-title">📊 CS WORKLOAD</div>
+            <div class="side-brand-sub">CAPACITY DASHBOARD</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown("<hr style='border:none;border-top:3px solid #ED6B21;margin:.35rem -1rem .6rem -1rem;'>", unsafe_allow_html=True)
     page = st.radio(
         "Navigation",
         ["Overview", "HC Capacity", "Shipment Volume", "Workload Allocation", "Customer Volume"],
         label_visibility="collapsed",
     )
-    st.markdown("---")
-    uploaded = st.file_uploader("Upload updated Excel", type=["xlsx", "xlsm"])
+    with st.expander("Data Source", expanded=False):
+        uploaded = st.file_uploader("Upload updated Excel", type=["xlsx", "xlsm"], label_visibility="collapsed")
+    st.markdown(
+        """
+        <div class="side-footer">
+            CS WORKLOAD<br>
+            DASHBOARD<br><br>
+            © 2026 CS HAD<br>
+            Internal Use Only<br>
+            v1.0
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 try:
     source = uploaded if uploaded is not None else discover_default_excel()
@@ -302,7 +344,6 @@ except Exception as e:
     st.error(f"Cannot read workbook: {e}")
     st.stop()
 
-# Last-updated label for the dashboard header.
 if uploaded is not None:
     data_date = "Uploaded file"
 else:
@@ -311,39 +352,62 @@ else:
     except Exception:
         data_date = "Not available"
 
-# Global filters
 all_offices = sorted(set(hc["Office"].dropna()) | set(ship["Office"].dropna()) | set(bu["Office"].dropna()))
-with st.sidebar:
-    st.markdown("### Filters")
-    office = st.selectbox("Office", ["All Offices"] + all_offices)
 
-    available_months = []
-    for m in MONTH_ORDER:
-        exists = (
-            ((hc["Month"] == m) & ((hc["Office"] == office) if office != "All Offices" else True)).any()
-            or ((ship["Month"] == m) & ((ship["Office"] == office) if office != "All Offices" else True)).any()
-            or ((bu["Month"] == m) & ((bu["Office"] == office) if office != "All Offices" else True)).any()
-        )
-        if exists:
-            available_months.append(m)
-    month = st.selectbox("Month", ["All Months"] + available_months)
-    st.markdown("---")
-    st.caption("FY2026 | Internal Use Only")
+# ============================================================
+# HEADER + FILTER BAR
+# ============================================================
+st.markdown('<div class="dashboard-title">CS WORKLOAD & CAPACITY DASHBOARD</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="dashboard-subtitle">🗓️ Last Updated: {data_date}</div>', unsafe_allow_html=True)
+
+# Session-state driven filters allow a Reset button in the main header.
+if "office_filter" not in st.session_state:
+    st.session_state.office_filter = "All Offices"
+if "month_filter" not in st.session_state:
+    st.session_state.month_filter = "All Months"
+
+meta_office = st.session_state.office_filter
+meta_month = st.session_state.month_filter
+st.markdown(
+    f'<div class="dashboard-filter">FY2026 &nbsp; • &nbsp; Office: {meta_office} &nbsp; • &nbsp; Month: {meta_month}</div>',
+    unsafe_allow_html=True,
+)
+st.markdown('<div class="orange-rule"></div>', unsafe_allow_html=True)
+
+fc1, fc2, spacer, fc3 = st.columns([1.05, 1.05, 1.05, .48], gap="medium")
+with fc1:
+    office = st.selectbox("Office", ["All Offices"] + all_offices, key="office_filter")
+
+available_months = []
+for m in MONTH_ORDER:
+    office_mask_hc = (hc["Office"] == office) if office != "All Offices" else pd.Series(True, index=hc.index)
+    office_mask_ship = (ship["Office"] == office) if office != "All Offices" else pd.Series(True, index=ship.index)
+    office_mask_bu = (bu["Office"] == office) if office != "All Offices" else pd.Series(True, index=bu.index)
+    exists = (
+        ((hc["Month"] == m) & office_mask_hc).any()
+        or ((ship["Month"] == m) & office_mask_ship).any()
+        or ((bu["Month"] == m) & office_mask_bu).any()
+    )
+    if exists:
+        available_months.append(m)
+
+if st.session_state.month_filter not in ["All Months"] + available_months:
+    st.session_state.month_filter = "All Months"
+
+with fc2:
+    month = st.selectbox("Month", ["All Months"] + available_months, key="month_filter")
+with fc3:
+    st.markdown("<div style='height:1.72rem'></div>", unsafe_allow_html=True)
+    if st.button("↻  Reset Filters", use_container_width=True):
+        st.session_state.office_filter = "All Offices"
+        st.session_state.month_filter = "All Months"
+        st.rerun()
+
+st.markdown('<div class="filter-divider"></div>', unsafe_allow_html=True)
 
 hc_f = filtered(hc, office, month)
 ship_f = filtered(ship, office, month)
 bu_f = filtered(bu, office, month)
-
-# ============================================================
-# HEADER
-# ============================================================
-st.markdown('<div class="dashboard-title">CS WORKLOAD & CAPACITY DASHBOARD</div>', unsafe_allow_html=True)
-st.markdown(
-    f'<div class="dashboard-subtitle">📅 Last Updated: {data_date}</div>',
-    unsafe_allow_html=True,
-)
-filter_text = f"FY2026 &nbsp; • &nbsp; Office: {office} &nbsp; • &nbsp; Month: {month}"
-st.markdown(f'<div class="dashboard-filter">{filter_text}</div>', unsafe_allow_html=True)
 
 # ============================================================
 # OVERVIEW
@@ -356,76 +420,90 @@ if page == "Overview":
 
     actual_hc = latest_hc["Actual_Total"].sum(min_count=1)
     required_hc = latest_hc["Required_Total"].sum(min_count=1)
-    capacity = (required_hc / actual_hc) if pd.notna(actual_hc) and actual_hc else np.nan
     total_ship = ship_f["TOTAL"].sum(min_count=1)
-    active_cust = ship_f["Active_Customer"].sum(min_count=1)
-    workload = bu_f["Total_Workload"].sum(min_count=1)
+    total_workload = bu_f["Total_Workload"].sum(min_count=1)
 
-    c1, c2, c3, c4, c5 = st.columns(5)
-    with c1: kpi_card("Actual HC", fmt_num(actual_hc), "Latest available HC in selected scope")
-    with c2: kpi_card("Required HC", fmt_num(required_hc, 1), "Calculated workforce requirement")
-    with c3:
-        cap_note = "Overload" if pd.notna(capacity) and capacity > 1 else "Within capacity"
-        kpi_card("Capacity Load", f"{capacity:.1%}" if pd.notna(capacity) else "-", cap_note, accent="accent-orange" if pd.notna(capacity) and capacity > 1 else "accent-green")
-    with c4: kpi_card("Shipment Volume", fmt_num(total_ship), "Total shipments in selected period", accent="accent-orange")
-    with c5: kpi_card("Total Workload", fmt_num(workload), "Processing time / workload units")
+    # Capacity is expressed as required HC / actual HC in the source workbook.
+    utilization = (required_hc / actual_hc) if pd.notna(actual_hc) and actual_hc else np.nan
+    exception_shipments = bu_f["Exception_Volume"].sum(min_count=1)
 
-    st.markdown('<div class="section-title">Management Overview</div>', unsafe_allow_html=True)
-    left, right = st.columns([1.05, 1], gap="large")
+    # Estimated monthly labor capacity in hours using 8h × 95% × 22 days.
+    capacity_hours = actual_hc * 8 * 0.95 * 22 if pd.notna(actual_hc) else np.nan
 
-    with left:
-        cap_df = hc_f.dropna(subset=["Capacity"]).copy()
-        if not cap_df.empty:
-            cap_df["Capacity %"] = cap_df["Capacity"] * 100
-            cap_df["Office-Month"] = cap_df["Office"] + " - " + cap_df["Month"]
-            fig = px.bar(cap_df, x="Office-Month", y="Capacity %", text="Capacity %", title="HC Capacity Load")
-            fig.update_traces(marker_color=BLUE, texttemplate="%{text:.1f}%", textposition="outside")
-            fig.add_hline(y=100, line_dash="dash", line_color=RED, annotation_text="100% capacity")
-            fig = style_fig(fig, 370, legend=False)
-            fig.update_yaxes(title="Capacity load (%)")
-            fig.update_xaxes(title="")
+    k1, k2, k3, k4, k5, k6 = st.columns(6, gap="small")
+    with k1:
+        kpi_card("TOTAL HC (FTE)", fmt_num(actual_hc, 1), "Actual headcount")
+    with k2:
+        kpi_card("TOTAL CAPACITY (HOURS)", fmt_num(capacity_hours), "8h × 95% × 22 days")
+    with k3:
+        kpi_card("TOTAL SHIPMENTS", fmt_num(total_ship), "Selected scope")
+    with k4:
+        kpi_card("TOTAL WORKLOAD (HOURS)", fmt_num(total_workload), "Recorded workload")
+    with k5:
+        kpi_card("CAPACITY UTILIZATION", f"{utilization:.1%}" if pd.notna(utilization) else "-", "Required HC / Actual HC", accent="accent-orange")
+    with k6:
+        kpi_card("EXCEPTION SHIPMENTS", fmt_num(exception_shipments), "Exception volume", accent="accent-green")
+
+    st.markdown('<div class="small-note">pp = percentage points</div>', unsafe_allow_html=True)
+    st.markdown("<div style='height:.45rem'></div>", unsafe_allow_html=True)
+
+    p1, p2, p3 = st.columns([1.12, 1, 1.1], gap="medium")
+
+    with p1:
+        with st.container(border=True):
+            st.markdown('<div class="section-title">📈 &nbsp; WORKLOAD VS CAPACITY (HOURS)</div>', unsafe_allow_html=True)
+            monthly_hc = hc_f.dropna(subset=["Actual_Total"]).copy()
+            if not monthly_hc.empty:
+                monthly_hc["Capacity_Hours"] = monthly_hc["Actual_Total"] * 8 * .95 * 22
+                cap_trend = monthly_hc.groupby("Month", as_index=False)["Capacity_Hours"].sum()
+                work_trend = bu_f.groupby("Month", as_index=False)["Total_Workload"].sum()
+                trend = cap_trend.merge(work_trend, on="Month", how="outer")
+                trend["_m"] = month_sort_key(trend["Month"])
+                trend = trend.sort_values("_m")
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=trend["Month"], y=trend["Capacity_Hours"], mode="lines+markers+text", name="Capacity (Hours)", text=[fmt_num(v) for v in trend["Capacity_Hours"]], textposition="top center", line=dict(color=NAVY, width=2.5), marker=dict(size=7)))
+                fig.add_trace(go.Scatter(x=trend["Month"], y=trend["Total_Workload"], mode="lines+markers+text", name="Workload (Hours)", text=[fmt_num(v) for v in trend["Total_Workload"]], textposition="bottom center", line=dict(color=ORANGE, width=2.5), marker=dict(size=7)))
+                fig = style_fig(fig, 330, legend=True)
+                fig.update_layout(margin=dict(l=0,r=0,t=38,b=5))
+                fig.update_yaxes(title="")
+                fig.update_xaxes(title="")
+                st.plotly_chart(fig, use_container_width=True, config=plot_config())
+            else:
+                st.info("No HC data available for the selected filters.")
+
+    with p2:
+        with st.container(border=True):
+            st.markdown('<div class="section-title">📈 &nbsp; CAPACITY UTILIZATION (%)</div>', unsafe_allow_html=True)
+            util_pct = float(utilization * 100) if pd.notna(utilization) else 0
+            util_pct = max(0, min(util_pct, 100))
+            fig = go.Figure(go.Pie(
+                values=[util_pct, max(100-util_pct, 0)],
+                labels=[f"Utilized ({util_pct:.1f}%)", f"Remaining ({100-util_pct:.1f}%)"],
+                hole=.64,
+                marker=dict(colors=[ORANGE, "#D8D8D8"]),
+                textinfo="none",
+                sort=False,
+            ))
+            fig.add_annotation(text=f"<b>{util_pct:.1f}%</b><br><span style='font-size:12px'>Utilization</span>", x=.5, y=.5, showarrow=False, font=dict(size=24, color=ORANGE))
+            fig.update_layout(height=330, margin=dict(l=5,r=5,t=15,b=10), showlegend=True, legend=dict(orientation="h", y=-.03, x=.5, xanchor="center"), paper_bgcolor="white")
             st.plotly_chart(fig, use_container_width=True, config=plot_config())
-        else:
-            st.info("No HC capacity data for the selected filters.")
 
-    with right:
-        seg = bu_f.groupby("Segment", as_index=False)["Total_Workload"].sum().dropna()
-        if not seg.empty:
-            seg["Segment"] = pd.Categorical(seg["Segment"], SEGMENT_ORDER, ordered=True)
-            seg = seg.sort_values("Segment")
-            fig = px.pie(seg, names="Segment", values="Total_Workload", hole=.58, title="Workload Mix by Business Segment")
-            fig.update_traces(textposition="inside", textinfo="percent+label")
-            fig = style_fig(fig, 370, legend=True)
-            st.plotly_chart(fig, use_container_width=True, config=plot_config())
-        else:
-            st.info("No workload allocation data for the selected filters.")
-
-    left, right = st.columns([1.25, 1], gap="large")
-    with left:
-        trend = ship_f.groupby("Month", as_index=False)["TOTAL"].sum().dropna()
-        if not trend.empty:
-            trend["_m"] = month_sort_key(trend["Month"])
-            trend = trend.sort_values("_m")
-            fig = px.line(trend, x="Month", y="TOTAL", markers=True, title="Shipment Volume Trend")
-            fig.update_traces(line_color=ORANGE, marker=dict(size=8))
-            fig = style_fig(fig, 340, legend=False)
-            fig.update_yaxes(title="Shipments")
-            fig.update_xaxes(title="")
-            st.plotly_chart(fig, use_container_width=True, config=plot_config())
-        else:
-            st.info("No shipment trend data for the selected filters.")
-
-    with right:
-        office_work = bu_f.groupby("Office", as_index=False)["Total_Workload"].sum().sort_values("Total_Workload")
-        if not office_work.empty:
-            fig = px.bar(office_work, y="Office", x="Total_Workload", orientation="h", text="Total_Workload", title="Workload by Office")
-            fig.update_traces(marker_color=NAVY, texttemplate="%{text:,.0f}", textposition="outside")
-            fig = style_fig(fig, 340, legend=False)
-            fig.update_xaxes(title="Workload")
-            fig.update_yaxes(title="")
-            st.plotly_chart(fig, use_container_width=True, config=plot_config())
-        else:
-            st.info("No workload data for the selected filters.")
+    with p3:
+        with st.container(border=True):
+            st.markdown('<div class="section-title">📊 &nbsp; TOP 5 OFFICES BY UTILIZATION</div>', unsafe_allow_html=True)
+            office_hc = hc_f.groupby("Office", as_index=False).agg(Actual_HC=("Actual_Total","sum"), Required_HC=("Required_Total","sum"))
+            office_hc["Utilization"] = np.where(office_hc["Actual_HC"]>0, office_hc["Required_HC"] / office_hc["Actual_HC"] * 100, np.nan)
+            office_hc = office_hc.dropna(subset=["Utilization"]).nlargest(5, "Utilization").sort_values("Utilization")
+            if not office_hc.empty:
+                fig = px.bar(office_hc, x="Utilization", y="Office", orientation="h", text="Utilization")
+                fig.update_traces(marker_color=ORANGE, texttemplate="%{text:.1f}%", textposition="outside", cliponaxis=False)
+                fig = style_fig(fig, 330, legend=False)
+                fig.update_layout(margin=dict(l=0,r=22,t=18,b=5))
+                fig.update_xaxes(range=[0, max(100, float(office_hc["Utilization"].max())*1.12)], ticksuffix="%", title="Utilization (%)")
+                fig.update_yaxes(title="")
+                st.plotly_chart(fig, use_container_width=True, config=plot_config())
+            else:
+                st.info("No office utilization data available.")
 
 # ============================================================
 # HC CAPACITY
