@@ -188,7 +188,15 @@ st.markdown(
 # 3. HELPERS
 # ============================================================
 def clean_text(value):
-    if pd.isna(value):
+    """Chuẩn hóa một giá trị về text; an toàn khi vô tình nhận Series/list."""
+    if isinstance(value, pd.Series):
+        non_null = value.dropna()
+        value = non_null.iloc[0] if not non_null.empty else None
+    elif isinstance(value, (list, tuple, np.ndarray)):
+        values = [v for v in value if not pd.isna(v)]
+        value = values[0] if values else None
+
+    if value is None or pd.isna(value):
         return ""
     return str(value).strip()
 
@@ -540,52 +548,57 @@ def load_bu(file_bytes):
 @st.cache_data(show_spinner=False)
 def load_customer(file_bytes):
     """
-    Hiện customer-level data đáng tin cậy chỉ lấy từ N-S Customer list.
-    Không dùng cached total của HAN Customer list / HLC.
+    Đọc customer-level data từ N-S Customer list.
+
+    Lưu ý:
+    - Sheet có header 2 dòng:
+        Row 1: No. | Office | Customer | SHIPMENT VOLUME ...
+        Row 2: ... | Apr-26 | May-26 | ... | Mar-27 | Total
+    - Dùng truy cập THEO VỊ TRÍ (.iloc), không dùng tên cột trùng/rỗng.
+      Cách này tránh lỗi:
+      "The truth value of a Series is ambiguous".
+    - Không sử dụng cột Total hardcoded.
+    - Không dùng cached TOTAL của HAN Customer list / HLC.
     """
     raw = read_sheet(file_bytes, "N-S Customer list")
 
-    # Header workbook hiện tại: row 1-2, data từ row 3.
-    # Ta lấy row 2 (index 1) làm tên chính, nhưng fallback theo vị trí.
-    header = [clean_text(x) for x in raw.iloc[1].tolist()]
-    df = raw.iloc[2:].copy()
-    df.columns = header
-    df = df.dropna(how="all").reset_index(drop=True)
+    if raw.shape[1] < 4 or raw.shape[0] < 3:
+        return pd.DataFrame(), pd.DataFrame()
 
-    # Fallback theo vị trí: A No, B Office, C Customer, D:O month, P Total
-    office_col = df.columns[1] if len(df.columns) > 1 else None
-    customer_col = df.columns[2] if len(df.columns) > 2 else None
-    month_cols = list(df.columns[3:15]) if len(df.columns) >= 16 else list(df.columns[3:-1])
+    # Vị trí cố định theo workbook đã phân tích:
+    # A=No., B=Office, C=Customer, D:O=12 tháng, P=Total
+    OFFICE_IDX = 1
+    CUSTOMER_IDX = 2
+    MONTH_START_IDX = 3
+    MONTH_END_IDX_EXCLUSIVE = min(15, raw.shape[1])  # D:O
 
-    # Nếu header month bị trống / duplicate, dùng giá trị row 1 + row 2 để dựng lại
-    if not any(normalize_month(c) for c in month_cols):
-        built_cols = build_multilevel_columns(raw, [0, 1])
-        df = raw.iloc[2:].copy()
-        df.columns = built_cols
-        office_col = df.columns[1]
-        customer_col = df.columns[2]
-        month_cols = list(df.columns[3:15])
+    month_indices = list(range(MONTH_START_IDX, MONTH_END_IDX_EXCLUSIVE))
+
+    # Header tháng nằm ở row index 1.
+    month_map = {}
+    for idx in month_indices:
+        month = normalize_month(raw.iat[1, idx])
+        if month is not None:
+            month_map[idx] = month
 
     records = []
-    for _, row in df.iterrows():
-        office = clean_text(row[office_col])
-        customer = clean_text(row[customer_col])
+
+    # Data bắt đầu từ row index 2.
+    for row_idx in range(2, len(raw)):
+        office = clean_text(raw.iat[row_idx, OFFICE_IDX])
+        customer = clean_text(raw.iat[row_idx, CUSTOMER_IDX])
+
+        # Bỏ dòng trống / TOTAL
         if not customer or customer.lower() == "total":
             continue
 
-        # Nếu Office trống nhưng sheet này về nghiệp vụ chỉ thuộc HAD
+        # Theo dữ liệu hiện tại, N-S Customer list thuộc HAD.
         if not office:
             office = "HAD"
 
-        for col in month_cols:
-            month = normalize_month(col)
-            if month is None:
-                # Multi-header có thể kiểu "Apr-26 | Apr-26"
-                month = normalize_month(str(col).split("|")[0].strip())
-            if month is None:
-                continue
+        for col_idx, month in month_map.items():
+            volume = pd.to_numeric(raw.iat[row_idx, col_idx], errors="coerce")
 
-            volume = pd.to_numeric(row[col], errors="coerce")
             records.append({
                 "Office": office,
                 "Customer": customer,
@@ -596,17 +609,26 @@ def load_customer(file_bytes):
             })
 
     long = pd.DataFrame(records)
-    if long.empty:
-        return long, pd.DataFrame()
 
-    # Không biến missing thành 0 trong data nguồn.
+    if long.empty:
+        return long, pd.DataFrame(
+            columns=["Office", "Customer", "Customer Total"]
+        )
+
+    # Missing vẫn là NaN, KHÔNG tự đổi thành 0.
     valid = long[long["Volume"].notna()].copy()
 
-    totals = (
-        valid.groupby(["Office", "Customer"], as_index=False)["Volume"]
-        .sum()
-        .rename(columns={"Volume": "Customer Total"})
-    )
+    if valid.empty:
+        totals = pd.DataFrame(
+            columns=["Office", "Customer", "Customer Total"]
+        )
+    else:
+        totals = (
+            valid.groupby(["Office", "Customer"], as_index=False)["Volume"]
+            .sum()
+            .rename(columns={"Volume": "Customer Total"})
+        )
+
     return long, totals
 
 
