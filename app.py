@@ -19,7 +19,7 @@ import streamlit as st
 # 1. PAGE CONFIG
 # ============================================================
 st.set_page_config(
-    page_title="Executive Workload & Capacity Dashboard",
+    page_title="Operations Performance Dashboard",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -638,28 +638,16 @@ def load_customer(file_bytes):
 st.sidebar.markdown("## 📊 Dashboard")
 st.sidebar.caption("Workload • Capacity • Volume • Customer")
 
+# Tự động đọc file Excel nằm cùng thư mục với app.py
 DEFAULT_FILE = Path("Template data for Dashboard.xlsx")
 
 if DEFAULT_FILE.exists():
     file_bytes = DEFAULT_FILE.read_bytes()
     source_name = DEFAULT_FILE.name
 else:
-    st.error("Không tìm thấy file dữ liệu: Template data for Dashboard.xlsx")
-    st.stop()
-DEFAULT_FILE = Path("Template data for Dashboard.xlsx")
-
-if uploaded_file is not None:
-    file_bytes = uploaded_file.getvalue()
-    source_name = uploaded_file.name
-elif DEFAULT_FILE.exists():
-    file_bytes = DEFAULT_FILE.read_bytes()
-    source_name = DEFAULT_FILE.name
-else:
-    st.title("Executive Workload & Capacity Dashboard")
-    st.warning(
-        "Vui lòng upload file Excel ở sidebar. "
-        "Nếu muốn chạy không cần upload, đặt file cùng thư mục app.py và đổi tên thành "
-        "`Template data for Dashboard.xlsx`."
+    st.error(
+        "Không tìm thấy file dữ liệu 'Template data for Dashboard.xlsx'. "
+        "Vui lòng kiểm tra file đã được upload lên GitHub và nằm cùng thư mục với app.py."
     )
     st.stop()
 
