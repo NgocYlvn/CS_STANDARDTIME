@@ -638,12 +638,14 @@ def load_customer(file_bytes):
 st.sidebar.markdown("## 📊 Dashboard")
 st.sidebar.caption("Workload • Capacity • Volume • Customer")
 
-uploaded_file = st.sidebar.file_uploader(
-    "Upload Excel workbook",
-    type=["xlsx", "xlsm"],
-    help="Chọn file Template data for Dashboard."
-)
+DEFAULT_FILE = Path("Template data for Dashboard.xlsx")
 
+if DEFAULT_FILE.exists():
+    file_bytes = DEFAULT_FILE.read_bytes()
+    source_name = DEFAULT_FILE.name
+else:
+    st.error("Không tìm thấy file dữ liệu: Template data for Dashboard.xlsx")
+    st.stop()
 DEFAULT_FILE = Path("Template data for Dashboard.xlsx")
 
 if uploaded_file is not None:
