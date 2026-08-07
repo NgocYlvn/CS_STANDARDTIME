@@ -340,6 +340,43 @@ try:
         st.error("No Excel workbook found. Please upload the workload workbook from the sidebar.")
         st.stop()
     hc, ship, bu, cust = load_data(source)
+
+    # ------------------------------------------------------------
+    # REMOVE SHIPMENT MONTHS WITH NO ACTUAL DATA
+    # Blank / None / NaN / all-zero shipment rows are excluded.
+    # Applied here so empty months disappear from filters, charts,
+    # KPIs, and Shipment Detail.
+    # ------------------------------------------------------------
+    shipment_value_cols = [
+        "Active_Customer", "AI", "AE", "OILCL", "OIFCL",
+        "OELCL", "OEFCL", "DI", "DE", "DM", "CE", "CI",
+        "HE", "HI", "RE", "RI", "RD"
+    ]
+
+    shipment_value_cols = [
+        col for col in shipment_value_cols
+        if col in ship.columns
+    ]
+
+    if shipment_value_cols:
+        for col in shipment_value_cols:
+            ship[col] = pd.to_numeric(ship[col], errors="coerce")
+
+        ship = ship[
+            ship[shipment_value_cols]
+            .fillna(0)
+            .sum(axis=1)
+            .ne(0)
+        ].copy()
+
+        existing_mode_cols = [col for col in MODE_COLS if col in ship.columns]
+        if existing_mode_cols:
+            ship["TOTAL"] = (
+                ship[existing_mode_cols]
+                .fillna(0)
+                .sum(axis=1)
+            )
+
 except Exception as e:
     st.error(f"Cannot read workbook: {e}")
     st.stop()
@@ -611,7 +648,28 @@ elif page == "Shipment Volume":
 
     st.markdown('<div class="section-title">Shipment Detail</div>', unsafe_allow_html=True)
     show_cols = ["Office","Month","Active_Customer"] + MODE_COLS + ["TOTAL"]
-    st.dataframe(data[show_cols], use_container_width=True, hide_index=True)
+
+    # Final safeguard: hide any remaining month without shipment data.
+    detail_value_cols = [
+        col for col in ["Active_Customer"] + MODE_COLS
+        if col in data.columns
+    ]
+    shipment_detail = data.copy()
+
+    if detail_value_cols:
+        shipment_detail = shipment_detail[
+            shipment_detail[detail_value_cols]
+            .apply(pd.to_numeric, errors="coerce")
+            .fillna(0)
+            .sum(axis=1)
+            .ne(0)
+        ].copy()
+
+    st.dataframe(
+        shipment_detail[show_cols],
+        use_container_width=True,
+        hide_index=True
+    )
 
 # ============================================================
 # WORKLOAD ALLOCATION
