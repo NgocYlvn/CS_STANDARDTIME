@@ -12,7 +12,7 @@ import streamlit as st
 # PAGE CONFIG
 # ============================================================
 st.set_page_config(
-    page_title="CS Workload & Capacity Dashboard",
+    page_title="Operations performance dashboard",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
