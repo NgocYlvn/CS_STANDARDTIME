@@ -579,10 +579,10 @@ elif page == "HC Capacity":
     hc_chart = data.copy()
 
     # Only keep rows with meaningful HC information.
-    hc_chart["Actual HC"] = pd.to_numeric(hc_chart["Actual HC"], errors="coerce")
-    hc_chart["Required HC"] = pd.to_numeric(hc_chart["Required HC"], errors="coerce")
+    hc_chart["Actual_Total"] = pd.to_numeric(hc_chart["Actual_Total"], errors="coerce")
+    hc_chart["Required_Total"] = pd.to_numeric(hc_chart["Required_Total"], errors="coerce")
     hc_chart = hc_chart[
-        hc_chart[["Actual HC", "Required HC"]]
+        hc_chart[["Actual_Total", "Required_Total"]]
         .fillna(0)
         .sum(axis=1)
         .ne(0)
@@ -605,8 +605,8 @@ elif page == "HC Capacity":
 
     # Required / Actual HC ratio.
     hc_chart["Utilization"] = np.where(
-        hc_chart["Actual HC"] > 0,
-        hc_chart["Required HC"] / hc_chart["Actual HC"] * 100,
+        hc_chart["Actual_Total"] > 0,
+        hc_chart["Required_Total"] / hc_chart["Actual_Total"] * 100,
         np.nan
     )
 
@@ -627,10 +627,10 @@ elif page == "HC Capacity":
             fig.add_trace(
                 go.Bar(
                     x=hc_chart["Period"],
-                    y=hc_chart["Actual HC"],
+                    y=hc_chart["Actual_Total"],
                     name="Actual HC",
                     marker_color="#083B82",
-                    text=hc_chart["Actual HC"].round(1),
+                    text=hc_chart["Actual_Total"].round(1),
                     textposition="outside",
                     cliponaxis=False,
                     hovertemplate=(
@@ -644,10 +644,10 @@ elif page == "HC Capacity":
             fig.add_trace(
                 go.Bar(
                     x=hc_chart["Period"],
-                    y=hc_chart["Required HC"],
+                    y=hc_chart["Required_Total"],
                     name="Required HC",
                     marker_color="#ED6B21",
-                    text=hc_chart["Required HC"].round(1),
+                    text=hc_chart["Required_Total"].round(1),
                     textposition="outside",
                     cliponaxis=False,
                     hovertemplate=(
