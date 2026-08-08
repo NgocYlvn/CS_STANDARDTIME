@@ -831,95 +831,160 @@ with h5:
     kpi_card("Capacity Status", hc_status, "", status_accent)
 
 # ============================================================
-# SHIPMENT VOLUME BY SERVICE
+# SHIPMENT VOLUME + SERVICE SHARE
 # ============================================================
 st.markdown("<br>", unsafe_allow_html=True)
-st.markdown('<div class="section-title">SHIPMENT VOLUME BY SERVICE</div>', unsafe_allow_html=True)
 
-volume_plot = service.copy()
-volume_plot["Display"] = volume_plot["Segment"]
+shipment_area, share_area = st.columns([1.8, 1.0], gap="medium")
 
-# Share of shipment volume by service
-shipment_total = float(volume_plot["Shipment_Volume"].sum())
-volume_plot["Share"] = np.where(
-    shipment_total > 0,
-    volume_plot["Shipment_Volume"] / shipment_total,
-    0,
-)
-
-# 30% detail table + 70% chart
-detail_col, chart_col = st.columns([0.30, 0.70], gap="medium")
-
-with detail_col:
-    shipment_detail = volume_plot[["Segment", "Shipment_Volume", "Share"]].copy()
-    shipment_detail = shipment_detail.rename(
-        columns={
-            "Segment": "Service",
-            "Shipment_Volume": "Volume",
-            "Share": "Share (%)",
-        }
+# ------------------------------------------------------------
+# LEFT: SHIPMENT VOLUME BY SERVICE
+# ------------------------------------------------------------
+with shipment_area:
+    st.markdown(
+        '<div class="section-title">SHIPMENT VOLUME BY SERVICE</div>',
+        unsafe_allow_html=True,
     )
 
-    # Add TOTAL row
-    total_row = pd.DataFrame([{
-        "Service": "TOTAL",
-        "Volume": shipment_total,
-        "Share (%)": 1.0 if shipment_total > 0 else 0.0,
-    }])
-    shipment_detail = pd.concat([shipment_detail, total_row], ignore_index=True)
+    volume_plot = service.copy()
+    volume_plot["Display"] = volume_plot["Segment"]
 
-    st.dataframe(
-        shipment_detail,
-        hide_index=True,
-        use_container_width=True,
-        height=340,
-        column_config={
-            "Service": st.column_config.TextColumn("Service"),
-            "Volume": st.column_config.NumberColumn("Volume", format="%.0f"),
-            "Share (%)": st.column_config.NumberColumn(
-    "Share (%)",
-    format="percent"
-),
-        },
+    # Share of shipment volume by service
+    shipment_total = float(volume_plot["Shipment_Volume"].sum())
+    volume_plot["Share"] = np.where(
+        shipment_total > 0,
+        volume_plot["Shipment_Volume"] / shipment_total,
+        0,
     )
 
-with chart_col:
-    fig = px.bar(
-        volume_plot,
-        x="Display",
-        y="Shipment_Volume",
-        text="Shipment_Volume",
-        category_orders={"Display": SERVICE_ORDER},
+    # Detail table + chart inside the shipment section
+    detail_col, chart_col = st.columns([0.34, 0.66], gap="small")
+
+    with detail_col:
+        shipment_detail = volume_plot[
+            ["Segment", "Shipment_Volume", "Share"]
+        ].copy()
+
+        shipment_detail = shipment_detail.rename(
+            columns={
+                "Segment": "Service",
+                "Shipment_Volume": "Volume",
+                "Share": "Share (%)",
+            }
+        )
+
+        # Convert ratio to percentage points for consistent display.
+        shipment_detail["Share (%)"] = shipment_detail["Share (%)"] * 100
+
+        total_row = pd.DataFrame([{
+            "Service": "TOTAL",
+            "Volume": shipment_total,
+            "Share (%)": 100.0 if shipment_total > 0 else 0.0,
+        }])
+
+        shipment_detail = pd.concat(
+            [shipment_detail, total_row],
+            ignore_index=True,
+        )
+
+        st.dataframe(
+            shipment_detail,
+            hide_index=True,
+            use_container_width=True,
+            height=340,
+            column_config={
+                "Service": st.column_config.TextColumn("Service"),
+                "Volume": st.column_config.NumberColumn(
+                    "Volume",
+                    format="%.0f",
+                ),
+                "Share (%)": st.column_config.NumberColumn(
+                    "Share (%)",
+                    format="%.1f%%",
+                ),
+            },
+        )
+
+    with chart_col:
+        fig = px.bar(
+            volume_plot,
+            x="Display",
+            y="Shipment_Volume",
+            text="Shipment_Volume",
+            category_orders={"Display": SERVICE_ORDER},
+        )
+
+        fig.update_traces(
+            marker_color="#0B63CE",
+            texttemplate="%{text:,.0f}",
+            textposition="outside",
+            cliponaxis=False,
+            width=0.62,
+        )
+
+        max_volume = volume_plot["Shipment_Volume"].max()
+        if pd.notna(max_volume) and max_volume > 0:
+            fig.update_yaxes(range=[0, max_volume * 1.15])
+
+        standard_chart_layout(fig, 340)
+        fig.update_yaxes(rangemode="tozero")
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            config={"displayModeBar": False},
+        )
+
+# ------------------------------------------------------------
+# RIGHT: SERVICE SHARE OF TOTAL TIME
+# ------------------------------------------------------------
+with share_area:
+    st.markdown(
+        '<div class="section-title">SERVICE SHARE OF TOTAL TIME</div>',
+        unsafe_allow_html=True,
     )
 
-    fig.update_traces(
-        marker_color="#0B63CE",
-        texttemplate="%{text:,.0f}",
-        textposition="outside",
-        cliponaxis=False,
-        width=0.62,
-    )
+    pie = service[service["Base_Workload"] > 0].copy()
 
-    max_volume = volume_plot["Shipment_Volume"].max()
-    if pd.notna(max_volume) and max_volume > 0:
-        fig.update_yaxes(range=[0, max_volume * 1.15])
+    if pie.empty:
+        st.info("No workload data available for selected filters.")
+    else:
+        fig = px.pie(
+            pie,
+            names="Segment",
+            values="Base_Workload",
+            hole=0.58,
+            category_orders={"Segment": SERVICE_ORDER},
+        )
 
-    standard_chart_layout(fig, 340)
-    fig.update_yaxes(rangemode="tozero")
-    st.plotly_chart(
-        fig,
-        use_container_width=True,
-        config={"displayModeBar": False},
-    )
+        fig.update_traces(
+            textposition="inside",
+            textinfo="label+percent",
+        )
+
+        fig.update_layout(
+            height=340,
+            margin=dict(l=10, r=10, t=20, b=20),
+            paper_bgcolor="white",
+            showlegend=False,
+        )
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            config={"displayModeBar": False},
+        )
 
 
 # ============================================================
-# OFFICE / PIC WORKLOAD + SERVICE SHARE
+# OFFICE / PIC WORKLOAD
 # ============================================================
 st.markdown("<br>", unsafe_allow_html=True)
-left, right = st.columns([1.2, 1], gap="medium")
 
-with left:
+# Full-width workload section because Service Share is displayed above.
+workload_area = st.container()
+
+with workload_area:
     if cs_pic != "All CS PIC":
         title = "SELECTED CS PIC WORKLOAD"
     elif office != "All Offices":
@@ -999,23 +1064,6 @@ with left:
             cliponaxis=False,
         )
         standard_chart_layout(fig, 340)
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
-with right:
-    st.markdown('<div class="section-title">SERVICE SHARE OF TOTAL TIME</div>', unsafe_allow_html=True)
-    pie = service[service["Base_Workload"] > 0].copy()
-    if pie.empty:
-        st.info("No workload data available for selected filters.")
-    else:
-        fig = px.pie(
-            pie,
-            names="Segment",
-            values="Base_Workload",
-            hole=0.58,
-            category_orders={"Segment": SERVICE_ORDER},
-        )
-        fig.update_traces(textposition="inside", textinfo="label+percent")
-        fig.update_layout(height=340, margin=dict(l=10, r=10, t=20, b=20), paper_bgcolor="white", showlegend=False)
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 # ============================================================
