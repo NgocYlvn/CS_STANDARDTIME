@@ -876,7 +876,10 @@ with detail_col:
         column_config={
             "Service": st.column_config.TextColumn("Service"),
             "Volume": st.column_config.NumberColumn("Volume", format="%.0f"),
-            "Share (%)": st.column_config.NumberColumn("Share (%)", format="%.1f%%"),
+            "Share (%)": st.column_config.NumberColumn(
+    "Share (%)",
+    format="percent"
+),
         },
     )
 
