@@ -353,7 +353,7 @@ def parse_hc(file_bytes: bytes) -> pd.DataFrame:
         "Approved HC Mgr", "Approved HC PIC", "Total Approved HC",
         "Actual HC Mgr", "Actual HC PIC", "Total Actual HC",
         "Required HC Mgr", "Required HC PIC", "Total Required HC",
-        "HC Utilization", "HC Status",
+        "Capacity Utilization", "HC Status",
     ]
 
     df["Office"] = df["Office"].map(clean_text)
@@ -364,7 +364,7 @@ def parse_hc(file_bytes: bytes) -> pd.DataFrame:
         "Approved HC Mgr", "Approved HC PIC", "Total Approved HC",
         "Actual HC Mgr", "Actual HC PIC", "Total Actual HC",
         "Required HC Mgr", "Required HC PIC", "Total Required HC",
-        "HC Utilization",
+        "Capacity Utilization",
     ]
     for c in numeric_cols:
         df[c] = pd.to_numeric(df[c], errors="coerce")
@@ -838,7 +838,7 @@ with h3:
     kpi_card("Required HC", _hc_value(required_hc_total), "", "orange")
 with h4:
     util_text = "—" if pd.isna(hc_utilization) else f"{hc_utilization:.0%}"
-    kpi_card("HC Utilization", util_text, "", "amber")
+    kpi_card("Capacity Utilization", util_text, "", "amber")
 with h5:
     status_accent = {
         "Overload": "red",
