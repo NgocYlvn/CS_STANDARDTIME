@@ -127,13 +127,13 @@ st.markdown(
     }
     .kpi-card {
         background:#FFFFFF;border:1px solid var(--line);border-radius:12px;
-        min-height:132px;display:flex;flex-direction:column;align-items:center;
+        min-height:142px;height:142px;display:flex;flex-direction:column;align-items:center;
         justify-content:center;box-shadow:0 2px 10px rgba(28,54,89,.05);
-        text-align:center;padding:8px 10px;box-sizing:border-box;
+        text-align:center;padding:10px 12px;box-sizing:border-box;
     }
-    .kpi-label {font-size:0.80rem;color:var(--navy);font-weight:800;margin-bottom:9px;}
-    .kpi-value {font-size:2.05rem;font-weight:850;color:var(--blue);line-height:1;}
-    .kpi-note {font-size:0.70rem;color:var(--muted);margin-top:8px;line-height:1.25;}
+    .kpi-label {font-size:0.88rem;color:var(--navy);font-weight:800;margin-bottom:10px;line-height:1.15;min-height:1.15rem;display:flex;align-items:center;justify-content:center;}
+    .kpi-value {font-size:2.15rem;font-weight:850;color:var(--blue);line-height:1.05;white-space:nowrap;}
+    .kpi-note {font-size:0.72rem;color:var(--muted);margin-top:8px;line-height:1.2;min-height:0.86rem;}
     .orange .kpi-value {color:var(--orange);}
     .green .kpi-value {color:var(--green);}
     .amber .kpi-value {color:var(--amber);}
@@ -203,12 +203,13 @@ def fmt_fte(minutes):
 
 
 def kpi_card(label, value, note="", accent=""):
+    note_html = f'<div class="kpi-note">{note}</div>' if note else '<div class="kpi-note">&nbsp;</div>'
     st.markdown(
         f"""
         <div class="kpi-card {accent}">
             <div class="kpi-label">{label}</div>
             <div class="kpi-value">{value}</div>
-            <div class="kpi-note">{note}</div>
+            {note_html}
         </div>
         """,
         unsafe_allow_html=True,
@@ -807,15 +808,15 @@ st.markdown(
 # ============================================================
 k1, k2, k3, k4, k5 = st.columns(5, gap="small")
 with k1:
-    kpi_card("Shipment Volume", f"{total_shipments:,.0f}", "Core Volume across AI/AE/OI/OE/TR/CC/WH")
+    kpi_card("Shipment Volume", f"{total_shipments:,.0f}", "")
 with k2:
-    kpi_card("Base Workload", fmt_hours(selected_base_workload), "Before manager allocation")
+    kpi_card("Base Workload", fmt_hours(selected_base_workload), "")
 with k3:
-    kpi_card("Manager Allocation", fmt_hours(selected_manager_minutes), f"Equivalent to {manager_fte_selected:.2f} manager FTE", "orange")
+    kpi_card("Manager Allocation", fmt_hours(selected_manager_minutes), "", "orange")
 with k4:
-    kpi_card("Adjusted Workload", fmt_hours(adjusted_total_workload), "Base workload + allocated manager time", "green")
+    kpi_card("Adjusted Workload", fmt_hours(adjusted_total_workload), "", "green")
 with k5:
-    kpi_card("Required FTE", f"{required_fte:.2f}", f"Average monthly FTE · 1 FTE = {FTE_MINUTES/60:.1f} productive hours/month", "amber")
+    kpi_card("Required FTE", f"{required_fte:.2f}", "", "amber")
 
 
 # ============================================================
@@ -837,7 +838,7 @@ with h3:
     kpi_card("Required HC", _hc_value(required_hc_total), "", "orange")
 with h4:
     util_text = "—" if pd.isna(hc_utilization) else f"{hc_utilization:.0%}"
-    kpi_card("HC Utilization", util_text, "Required HC / Actual HC", "amber")
+    kpi_card("HC Utilization", util_text, "", "amber")
 with h5:
     status_accent = {
         "Overload": "red",
@@ -845,7 +846,7 @@ with h5:
         "Balanced": "green",
         "Low Load": "",
     }.get(hc_status, "")
-    kpi_card("Capacity status", hc_status, "", status_accent)
+    kpi_card("Capacity Status", hc_status, "", status_accent)
 
 # ============================================================
 # SERVICE VOLUME + SERVICE WORKLOAD
