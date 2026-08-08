@@ -717,10 +717,16 @@ with right:
     st.markdown('<div class="section-title">WORKLOAD & MANAGER ALLOCATION BY SERVICE</div>', unsafe_allow_html=True)
     workload_long = service.melt(
         id_vars=["Segment"],
-        value_vars=["Base Workload", "Manager Allocated"],
+        value_vars=["Base_Workload", "Manager Allocated"],
         var_name="Workload Type",
         value_name="Minutes",
     )
+
+    # Rename only for display in the chart legend
+    workload_long["Workload Type"] = workload_long["Workload Type"].replace({
+        "Base_Workload": "Base Workload"
+    })
+
     workload_long["Hours"] = workload_long["Minutes"] / 60
     fig = px.bar(
         workload_long,
