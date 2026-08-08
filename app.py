@@ -877,7 +877,18 @@ with left:
         office_workload["Hours"] = office_workload["Base Workload"] / 60
         office_workload = office_workload.sort_values("Hours", ascending=True)
         fig = px.bar(office_workload, x="Hours", y="Office", orientation="h", text="Hours")
-        fig.update_traces(marker_color="#0B63CE", texttemplate="%{text:.1f}h", textposition="outside", cliponaxis=False)
+        fig.update_traces(
+            marker_color="#0B63CE",
+            texttemplate="%{text:.1f}h",
+            textposition="outside",
+            cliponaxis=False,
+        )
+
+        # Chừa thêm 15% khoảng trống bên phải để nhãn workload không bị khuất.
+        max_hours = office_workload["Hours"].max()
+        if pd.notna(max_hours) and max_hours > 0:
+            fig.update_xaxes(range=[0, max_hours * 1.15])
+
         standard_chart_layout(fig, 340)
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     else:
