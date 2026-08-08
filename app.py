@@ -370,14 +370,36 @@ st.sidebar.markdown(
 )
 st.sidebar.markdown("---")
 
-all_offices = sorted(set(bu["Office"].dropna().astype(str)) | set(cs_fte.get("Office", pd.Series(dtype=str)).dropna().astype(str)))
-office = st.sidebar.selectbox("Office", ["All Offices"] + all_offices)
+def reset_child_filters():
+    """Reset dependent filters when Office or Month changes."""
+    st.session_state["filter_cs_pic"] = "All CS PIC"
+    st.session_state["filter_customer"] = "All Customers"
+
+
+all_offices = sorted(
+    set(bu["Office"].dropna().astype(str))
+    | set(cs_fte.get("Office", pd.Series(dtype=str)).dropna().astype(str))
+)
+
+office = st.sidebar.selectbox(
+    "Office",
+    ["All Offices"] + all_offices,
+    key="filter_office",
+    on_change=reset_child_filters,
+)
 
 # Month options only from populated BU rows; keep FY order.
 # Add "All" so the dashboard can show the full available period.
 available_months = [m for m in MONTH_ORDER if m in set(bu["Month"].astype(str))]
 month_options = ["All"] + available_months
-month = st.sidebar.selectbox("Month", month_options, index=0)
+
+month = st.sidebar.selectbox(
+    "Month",
+    month_options,
+    index=0,
+    key="filter_month",
+    on_change=reset_child_filters,
+)
 
 # Number of months currently included in the calculation.
 # This is important because Manager FTE and FTE capacity are monthly values.
@@ -395,8 +417,24 @@ else:
 if office != "All Offices" and not pic_scope.empty:
     pic_scope = pic_scope[pic_scope["Office"].eq(office)]
 
-pic_options = sorted(pic_scope["CS PIC"].dropna().unique().tolist()) if not pic_scope.empty else []
-cs_pic = st.sidebar.selectbox("CS PIC", ["All CS PIC"] + pic_options)
+pic_options = sorted(
+    pic_scope["CS PIC"].dropna().unique().tolist()
+) if not pic_scope.empty else []
+pic_select_options = ["All CS PIC"] + pic_options
+
+# If the previous CS PIC is no longer valid after changing Office/Month,
+# force it back to All CS PIC before rendering the widget.
+if (
+    "filter_cs_pic" in st.session_state
+    and st.session_state["filter_cs_pic"] not in pic_select_options
+):
+    st.session_state["filter_cs_pic"] = "All CS PIC"
+
+cs_pic = st.sidebar.selectbox(
+    "CS PIC",
+    pic_select_options,
+    key="filter_cs_pic",
+)
 
 # Customer scope
 if customer.empty:
@@ -409,8 +447,23 @@ else:
 if office != "All Offices" and not cust_scope.empty:
     cust_scope = cust_scope[cust_scope["Office"].eq(office)]
 
-customer_options = sorted(cust_scope["Customer"].dropna().unique().tolist()) if not cust_scope.empty else []
-selected_customer = st.sidebar.selectbox("Customer", ["All Customers"] + customer_options)
+customer_options = sorted(
+    cust_scope["Customer"].dropna().unique().tolist()
+) if not cust_scope.empty else []
+customer_select_options = ["All Customers"] + customer_options
+
+# Keep Customer selection synchronized with the currently available list.
+if (
+    "filter_customer" in st.session_state
+    and st.session_state["filter_customer"] not in customer_select_options
+):
+    st.session_state["filter_customer"] = "All Customers"
+
+selected_customer = st.sidebar.selectbox(
+    "Customer",
+    customer_select_options,
+    key="filter_customer",
+)
 
 st.sidebar.markdown("---")
 # ============================================================
@@ -495,8 +548,17 @@ manager_fte_selected = safe_divide(selected_manager_minutes, period_capacity_min
 # HEADER / DATA NOTE
 # ============================================================
 st.markdown(f'<div class="dashboard-title">{APP_TITLE}</div>', unsafe_allow_html=True)
+
+# Display exactly the values currently selected in the sidebar filters.
+filter_summary = (
+    f"Month: {st.session_state.get('filter_month', month)}"
+    f" · Office: {st.session_state.get('filter_office', office)}"
+    f" · CS PIC: {st.session_state.get('filter_cs_pic', cs_pic)}"
+    f" · Customer: {st.session_state.get('filter_customer', selected_customer)}"
+)
+
 st.markdown(
-    f'<div class="dashboard-subtitle">Month: {month} · Office: {office} · CS PIC: {cs_pic}</div>',
+    f'<div class="dashboard-subtitle">{filter_summary}</div>',
     unsafe_allow_html=True,
 )
 
