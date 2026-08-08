@@ -12,13 +12,13 @@ import streamlit as st
 # APP CONFIGURATION
 # ============================================================
 st.set_page_config(
-    page_title="Operations Performance Dashboard",
+    page_title="OPERATIONS WORKLOAD & CAPACITY DASHBOARD",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-APP_TITLE = "OPERATIONS PERFORMANCE DASHBOARD"
+APP_TITLE = "OPERATIONS WORKLOAD & CAPACITY DASHBOARD"
 FTE_HOURS_PER_DAY = 8
 EFFICIENCY = 0.95
 WORKING_DAYS = 22
