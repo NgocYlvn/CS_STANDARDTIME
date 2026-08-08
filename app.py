@@ -896,17 +896,21 @@ with left:
             )
             fig.update_traces(
                 marker_color="#0B63CE",
-                texttemplate="%{text:.1f}h",
+                texttemplate="%{text:,.1f}h",
                 textposition="outside",
                 cliponaxis=False,
+                width=0.42,
             )
 
-            # Chừa thêm 15% khoảng trống bên phải để nhãn workload không bị khuất.
+            # Chừa thêm khoảng trống bên phải để nhãn workload không bị khuất.
             max_hours = office_workload["Hours"].max()
             if pd.notna(max_hours) and max_hours > 0:
-                fig.update_xaxes(range=[0, max_hours * 1.15])
+                fig.update_xaxes(range=[0, max_hours * 1.18])
 
-            standard_chart_layout(fig, 340)
+            # Nếu chỉ có 1 Office, giảm chiều cao chart để biểu đồ cân đối hơn.
+            chart_height = 260 if len(office_workload) == 1 else 340
+
+            standard_chart_layout(fig, chart_height)
             st.plotly_chart(
                 fig,
                 use_container_width=True,
