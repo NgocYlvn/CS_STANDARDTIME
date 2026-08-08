@@ -839,24 +839,75 @@ st.markdown('<div class="section-title">SHIPMENT VOLUME BY SERVICE</div>', unsaf
 volume_plot = service.copy()
 volume_plot["Display"] = volume_plot["Segment"]
 
-fig = px.bar(
-    volume_plot,
-    x="Display",
-    y="Shipment_Volume",
-    text="Shipment_Volume",
-    category_orders={"Display": SERVICE_ORDER},
+# Share of shipment volume by service
+shipment_total = float(volume_plot["Shipment_Volume"].sum())
+volume_plot["Share"] = np.where(
+    shipment_total > 0,
+    volume_plot["Shipment_Volume"] / shipment_total,
+    0,
 )
 
-fig.update_traces(
-    marker_color="#0B63CE",
-    texttemplate="%{text:.0f}",
-    textposition="outside",
-    cliponaxis=False,
-)
+# 30% detail table + 70% chart
+detail_col, chart_col = st.columns([0.30, 0.70], gap="medium")
 
-standard_chart_layout(fig, 340)
-fig.update_yaxes(rangemode="tozero")
-st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+with detail_col:
+    shipment_detail = volume_plot[["Segment", "Shipment_Volume", "Share"]].copy()
+    shipment_detail = shipment_detail.rename(
+        columns={
+            "Segment": "Service",
+            "Shipment_Volume": "Volume",
+            "Share": "Share (%)",
+        }
+    )
+
+    # Add TOTAL row
+    total_row = pd.DataFrame([{
+        "Service": "TOTAL",
+        "Volume": shipment_total,
+        "Share (%)": 1.0 if shipment_total > 0 else 0.0,
+    }])
+    shipment_detail = pd.concat([shipment_detail, total_row], ignore_index=True)
+
+    st.dataframe(
+        shipment_detail,
+        hide_index=True,
+        use_container_width=True,
+        height=340,
+        column_config={
+            "Service": st.column_config.TextColumn("Service"),
+            "Volume": st.column_config.NumberColumn("Volume", format="%.0f"),
+            "Share (%)": st.column_config.NumberColumn("Share (%)", format="%.1f%%"),
+        },
+    )
+
+with chart_col:
+    fig = px.bar(
+        volume_plot,
+        x="Display",
+        y="Shipment_Volume",
+        text="Shipment_Volume",
+        category_orders={"Display": SERVICE_ORDER},
+    )
+
+    fig.update_traces(
+        marker_color="#0B63CE",
+        texttemplate="%{text:,.0f}",
+        textposition="outside",
+        cliponaxis=False,
+        width=0.62,
+    )
+
+    max_volume = volume_plot["Shipment_Volume"].max()
+    if pd.notna(max_volume) and max_volume > 0:
+        fig.update_yaxes(range=[0, max_volume * 1.15])
+
+    standard_chart_layout(fig, 340)
+    fig.update_yaxes(rangemode="tozero")
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+        config={"displayModeBar": False},
+    )
 
 
 # ============================================================
