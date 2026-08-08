@@ -506,12 +506,6 @@ if selected_customer != "All Customers":
         "nên workload/FTE không được giảm theo Customer để tránh phân bổ sai dữ liệu."
     )
 
-if cs_pic != "All CS PIC":
-    st.caption(
-        "CS PIC service breakdown is an allocated estimate: office service mix × PIC workload share. "
-        "PIC total workload itself is calculated from the CS FTE sheet."
-    )
-
 # ============================================================
 # KPI ROW
 # ============================================================
