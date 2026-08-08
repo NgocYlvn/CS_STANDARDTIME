@@ -470,10 +470,7 @@ except Exception as exc:
 # SIDEBAR FILTERS
 # ============================================================
 st.sidebar.markdown("## 📊 CS Division")
-st.sidebar.markdown(
-    "<div style='color:#D8E5F8;font-size:14px;margin-top:-8px;margin-bottom:14px;'>FTE & Capacity Dashboard</div>",
-    unsafe_allow_html=True,
-)
+
 st.sidebar.markdown("---")
 
 def reset_child_filters():
