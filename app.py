@@ -413,9 +413,6 @@ customer_options = sorted(cust_scope["Customer"].dropna().unique().tolist()) if 
 selected_customer = st.sidebar.selectbox("Customer", ["All Customers"] + customer_options)
 
 st.sidebar.markdown("---")
-st.sidebar.caption(f"Source: {source_name}")
-st.sidebar.caption(f"1 FTE = {FTE_MINUTES:,.0f} min/month = {FTE_MINUTES/60:,.1f} h")
-
 # ============================================================
 # FILTER / CALCULATION MODEL
 # ============================================================
