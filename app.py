@@ -866,31 +866,52 @@ st.markdown("<br>", unsafe_allow_html=True)
 left, right = st.columns([1.2, 1], gap="medium")
 
 with left:
-    title = "WORKLOAD BY OFFICE" if cs_pic == "All CS PIC" else "SELECTED CS PIC WORKLOAD"
+    if cs_pic != "All CS PIC":
+        title = "SELECTED CS PIC WORKLOAD"
+    elif office != "All Offices":
+        title = f"WORKLOAD - {office}"
+    else:
+        title = "WORKLOAD BY OFFICE"
     st.markdown(f'<div class="section-title">{title}</div>', unsafe_allow_html=True)
 
     if cs_pic == "All CS PIC":
         office_workload = (
-            base_bu_month.groupby("Office", as_index=False)["Total Workload"].sum()
+            filtered_bu.groupby("Office", as_index=False)["Total Workload"].sum()
             .rename(columns={"Total Workload": "Base Workload"})
         )
         office_workload["Hours"] = office_workload["Base Workload"] / 60
-        office_workload = office_workload.sort_values("Hours", ascending=True)
-        fig = px.bar(office_workload, x="Hours", y="Office", orientation="h", text="Hours")
-        fig.update_traces(
-            marker_color="#0B63CE",
-            texttemplate="%{text:.1f}h",
-            textposition="outside",
-            cliponaxis=False,
-        )
+        office_workload = office_workload[office_workload["Hours"] > 0].copy()
 
-        # Chừa thêm 15% khoảng trống bên phải để nhãn workload không bị khuất.
-        max_hours = office_workload["Hours"].max()
-        if pd.notna(max_hours) and max_hours > 0:
-            fig.update_xaxes(range=[0, max_hours * 1.15])
+        if office_workload.empty:
+            st.info("No workload data available for selected filters.")
+        else:
+            office_workload = office_workload.sort_values("Hours", ascending=True)
 
-        standard_chart_layout(fig, 340)
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+            fig = px.bar(
+                office_workload,
+                x="Hours",
+                y="Office",
+                orientation="h",
+                text="Hours",
+            )
+            fig.update_traces(
+                marker_color="#0B63CE",
+                texttemplate="%{text:.1f}h",
+                textposition="outside",
+                cliponaxis=False,
+            )
+
+            # Chừa thêm 15% khoảng trống bên phải để nhãn workload không bị khuất.
+            max_hours = office_workload["Hours"].max()
+            if pd.notna(max_hours) and max_hours > 0:
+                fig.update_xaxes(range=[0, max_hours * 1.15])
+
+            standard_chart_layout(fig, 340)
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+                config={"displayModeBar": False},
+            )
     else:
         pic_display = pic_scope[pic_scope["CS PIC"].eq(cs_pic)].copy()
 
