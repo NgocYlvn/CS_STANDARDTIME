@@ -23,8 +23,6 @@ FTE_HOURS_PER_DAY = 8
 EFFICIENCY = 0.95
 WORKING_DAYS = 22
 FTE_MINUTES = FTE_HOURS_PER_DAY * 60 * EFFICIENCY * WORKING_DAYS  # 10,032 min/month
-MANAGER_FTE = 8
-MANAGER_MINUTES = MANAGER_FTE * FTE_MINUTES                       # 80,256 min/month
 
 SERVICE_ORDER = ["AI", "AE", "OI", "OE", "TR", "CC", "WH"]
 SERVICE_LABELS = {
@@ -353,7 +351,7 @@ def parse_hc(file_bytes: bytes) -> pd.DataFrame:
         "Approved HC Mgr", "Approved HC PIC", "Total Approved HC",
         "Actual HC Mgr", "Actual HC PIC", "Total Actual HC",
         "Required HC Mgr", "Required HC PIC", "Total Required HC",
-        "Capacity Utilization", "HC Status",
+        "HC Utilization", "HC Status",
     ]
 
     df["Office"] = df["Office"].map(clean_text)
@@ -364,7 +362,7 @@ def parse_hc(file_bytes: bytes) -> pd.DataFrame:
         "Approved HC Mgr", "Approved HC PIC", "Total Approved HC",
         "Actual HC Mgr", "Actual HC PIC", "Total Actual HC",
         "Required HC Mgr", "Required HC PIC", "Total Required HC",
-        "Capacity Utilization",
+        "HC Utilization",
     ]
     for c in numeric_cols:
         df[c] = pd.to_numeric(df[c], errors="coerce")
@@ -523,7 +521,7 @@ except Exception as exc:
 # ============================================================
 st.sidebar.markdown("## 📊 CS Division")
 st.sidebar.markdown(
-    "<div style='color:#D8E5F8;font-size:14px;margin-top:-8px;margin-bottom:14px;'>FTE & Capacity Dashboard</div>",
+    "<div style='color:#D8E5F8;font-size:14px;margin-top:-8px;margin-bottom:14px;'>Workload & Capacity Dashboard</div>",
     unsafe_allow_html=True,
 )
 st.sidebar.markdown("---")
@@ -664,24 +662,17 @@ filtered_customer = cust_scope.copy()
 if selected_customer != "All Customers" and not filtered_customer.empty:
     filtered_customer = filtered_customer[filtered_customer["Customer"].eq(selected_customer)]
 
-# Office / network base workload before manager allocation.
+# Office / network workload.
 network_base_workload = float(base_bu_month["Total Workload"].sum())
 selected_base_workload = float(filtered_bu["Total Workload"].sum())
 
-# Allocate 8 managers per month to offices by each office's share of network workload.
-# When Month = All, the manager pool is multiplied by the number of selected months.
-manager_pool_minutes = MANAGER_MINUTES * selected_month_count
-
-if office == "All Offices":
-    selected_manager_minutes = manager_pool_minutes
-else:
-    office_share = safe_divide(selected_base_workload, network_base_workload)
-    selected_manager_minutes = manager_pool_minutes * office_share
-
-# PIC selection: use CS FTE as the source of total PIC workload; service split is allocated by office service mix.
+# PIC selection:
+# Use CS FTE as the source of PIC workload.
+# Until manager-allocation logic is confirmed, no manager time is added.
 pic_workload_minutes = None
 pic_fte_value = None
 pic_share = None
+
 if cs_pic != "All CS PIC" and not pic_scope.empty:
     selected_pic_rows = pic_scope[pic_scope["CS PIC"].eq(cs_pic)]
     pic_fte_value = float(selected_pic_rows["FTE"].sum())
@@ -693,7 +684,6 @@ if cs_pic != "All CS PIC" and not pic_scope.empty:
     filtered_bu["Total Workload"] = filtered_bu["Total Workload"] * pic_share
     filtered_bu["Core Volume"] = filtered_bu["Core Volume"] * pic_share
     selected_base_workload = float(filtered_bu["Total Workload"].sum())
-    selected_manager_minutes = selected_manager_minutes * pic_share
 
 # Aggregate Shipment Volume + Workload by BU from BU allocation.
 # Business rule:
@@ -713,29 +703,22 @@ service = (
     .fillna(0)
 )
 
-# Manager Allocation is based on each BU's share of processing/workload time.
+# Workload share by BU based on processing/workload time.
 service["Service Share"] = np.where(
     service["Base_Workload"].sum() > 0,
     service["Base_Workload"] / service["Base_Workload"].sum(),
     0,
 )
 
-service["Manager Allocated"] = service["Service Share"] * selected_manager_minutes
-service["Adjusted Workload"] = service["Base_Workload"] + service["Manager Allocated"]
 service["Service"] = service["Segment"].map(SERVICE_LABELS)
 
-adjusted_total_workload = float(service["Adjusted Workload"].sum())
-
-# Required FTE is shown as average monthly FTE for the selected period.
+# Required FTE based only on confirmed workload.
 period_capacity_minutes = FTE_MINUTES * selected_month_count
-required_fte = safe_divide(adjusted_total_workload, period_capacity_minutes)
-service["Adjusted FTE"] = service["Adjusted Workload"] / period_capacity_minutes
+required_fte = safe_divide(selected_base_workload, period_capacity_minutes)
+service["Required FTE"] = service["Base_Workload"] / period_capacity_minutes
 
-# Official Shipment Volume for the 7 BU groups comes from BU allocation -> Core Volume.
+# Shipment Volume for 7 BU groups comes from BU allocation -> Core Volume.
 total_shipments = float(service["Shipment_Volume"].sum())
-
-# Manager FTE is shown as average monthly FTE for the selected period.
-manager_fte_selected = safe_divide(selected_manager_minutes, period_capacity_minutes)
 
 # -------------------------
 # HC KPI calculation
@@ -806,16 +789,15 @@ st.markdown(
 # ============================================================
 # KPI ROW
 # ============================================================
-k1, k2, k3, k4, k5 = st.columns(5, gap="small")
+k1, k2, k3 = st.columns(3, gap="small")
+
 with k1:
     kpi_card("Shipment Volume", f"{total_shipments:,.0f}", "")
+
 with k2:
-    kpi_card("Base Workload", fmt_hours(selected_base_workload), "")
+    kpi_card("Total Workload", fmt_hours(selected_base_workload), "")
+
 with k3:
-    kpi_card("Manager Allocation", fmt_hours(selected_manager_minutes), "", "orange")
-with k4:
-    kpi_card("Adjusted Workload", fmt_hours(adjusted_total_workload), "", "green")
-with k5:
     kpi_card("Required FTE", f"{required_fte:.2f}", "", "amber")
 
 
@@ -838,7 +820,7 @@ with h3:
     kpi_card("Required HC", _hc_value(required_hc_total), "", "orange")
 with h4:
     util_text = "—" if pd.isna(hc_utilization) else f"{hc_utilization:.0%}"
-    kpi_card("Capacity Utilization", util_text, "", "amber")
+    kpi_card("HC Utilization", util_text, "", "amber")
 with h5:
     status_accent = {
         "Overload": "red",
@@ -849,57 +831,33 @@ with h5:
     kpi_card("Capacity Status", hc_status, "", status_accent)
 
 # ============================================================
-# SERVICE VOLUME + SERVICE WORKLOAD
+# SHIPMENT VOLUME BY SERVICE
 # ============================================================
 st.markdown("<br>", unsafe_allow_html=True)
-left, right = st.columns([1.05, 1.25], gap="medium")
+st.markdown('<div class="section-title">SHIPMENT VOLUME BY SERVICE</div>', unsafe_allow_html=True)
 
-with left:
-    st.markdown('<div class="section-title">SHIPMENT VOLUME BY SERVICE</div>', unsafe_allow_html=True)
-    volume_plot = service.copy()
-    volume_plot["Display"] = volume_plot["Segment"]
-    fig = px.bar(
-        volume_plot,
-        x="Display",
-        y="Shipment_Volume",
-        text="Shipment_Volume",
-        category_orders={"Display": SERVICE_ORDER},
-    )
-    fig.update_traces(marker_color="#0B63CE", texttemplate="%{text:.0f}", textposition="outside", cliponaxis=False)
-    standard_chart_layout(fig, 340)
-    fig.update_yaxes(rangemode="tozero")
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+volume_plot = service.copy()
+volume_plot["Display"] = volume_plot["Segment"]
 
-with right:
-    st.markdown('<div class="section-title">WORKLOAD & MANAGER ALLOCATION BY SERVICE</div>', unsafe_allow_html=True)
-    workload_long = service.melt(
-        id_vars=["Segment"],
-        value_vars=["Base_Workload", "Manager Allocated"],
-        var_name="Workload Type",
-        value_name="Minutes",
-    )
+fig = px.bar(
+    volume_plot,
+    x="Display",
+    y="Shipment_Volume",
+    text="Shipment_Volume",
+    category_orders={"Display": SERVICE_ORDER},
+)
 
-    # Rename only for display in the chart legend
-    workload_long["Workload Type"] = workload_long["Workload Type"].replace({
-        "Base_Workload": "Base Workload"
-    })
+fig.update_traces(
+    marker_color="#0B63CE",
+    texttemplate="%{text:.0f}",
+    textposition="outside",
+    cliponaxis=False,
+)
 
-    workload_long["Hours"] = workload_long["Minutes"] / 60
-    fig = px.bar(
-        workload_long,
-        x="Segment",
-        y="Hours",
-        color="Workload Type",
-        barmode="stack",
-        category_orders={"Segment": SERVICE_ORDER},
-        color_discrete_map={
-            "Base Workload": "#0B63CE",
-            "Manager Allocated": "#ED6B21",
-        },
-    )
-    standard_chart_layout(fig, 340)
-    fig.update_yaxes(title_text="Hours")
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+standard_chart_layout(fig, 340)
+fig.update_yaxes(rangemode="tozero")
+st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
 
 # ============================================================
 # OFFICE / PIC WORKLOAD + SERVICE SHARE
@@ -916,14 +874,7 @@ with left:
             base_bu_month.groupby("Office", as_index=False)["Total Workload"].sum()
             .rename(columns={"Total Workload": "Base Workload"})
         )
-        office_workload["Network Share"] = np.where(
-            office_workload["Base Workload"].sum() > 0,
-            office_workload["Base Workload"] / office_workload["Base Workload"].sum(),
-            0,
-        )
-        office_workload["Manager Allocated"] = office_workload["Network Share"] * manager_pool_minutes
-        office_workload["Adjusted Workload"] = office_workload["Base Workload"] + office_workload["Manager Allocated"]
-        office_workload["Hours"] = office_workload["Adjusted Workload"] / 60
+        office_workload["Hours"] = office_workload["Base Workload"] / 60
         office_workload = office_workload.sort_values("Hours", ascending=True)
         fig = px.bar(office_workload, x="Hours", y="Office", orientation="h", text="Hours")
         fig.update_traces(marker_color="#0B63CE", texttemplate="%{text:.1f}h", textposition="outside", cliponaxis=False)
@@ -962,14 +913,14 @@ with left:
 
 with right:
     st.markdown('<div class="section-title">SERVICE SHARE OF TOTAL TIME</div>', unsafe_allow_html=True)
-    pie = service[service["Adjusted Workload"] > 0].copy()
+    pie = service[service["Base_Workload"] > 0].copy()
     if pie.empty:
         st.info("No workload data available for selected filters.")
     else:
         fig = px.pie(
             pie,
             names="Segment",
-            values="Adjusted Workload",
+            values="Base_Workload",
             hole=0.58,
             category_orders={"Segment": SERVICE_ORDER},
         )
@@ -1054,27 +1005,35 @@ with right:
 # ============================================================
 st.markdown("<br>", unsafe_allow_html=True)
 st.markdown('<div class="section-title">SERVICE WORKLOAD DETAIL</div>', unsafe_allow_html=True)
+
 service_table = service[[
-    "Segment", "Service", "Shipment_Volume", "Base_Workload",
-    "Service Share", "Manager Allocated", "Adjusted Workload", "Adjusted FTE",
+    "Segment",
+    "Service",
+    "Shipment_Volume",
+    "Base_Workload",
+    "Service Share",
+    "Required FTE",
 ]].copy()
-service_table["Base Workload (h)"] = service_table["Base_Workload"] / 60
-service_table["Manager Allocation (h)"] = service_table["Manager Allocated"] / 60
-service_table["Adjusted Workload (h)"] = service_table["Adjusted Workload"] / 60
+
+service_table["Total Workload (h)"] = service_table["Base_Workload"] / 60
+
 service_table = service_table[[
-    "Segment", "Service", "Shipment_Volume", "Base Workload (h)",
-    "Service Share", "Manager Allocation (h)", "Adjusted Workload (h)", "Adjusted FTE",
+    "Segment",
+    "Service",
+    "Shipment_Volume",
+    "Total Workload (h)",
+    "Service Share",
+    "Required FTE",
 ]]
+
 st.dataframe(
     service_table,
     hide_index=True,
     use_container_width=True,
     column_config={
         "Shipment_Volume": st.column_config.NumberColumn("Shipment Volume", format="%.0f"),
-        "Base Workload (h)": st.column_config.NumberColumn("Base Workload (h)", format="%.1f"),
+        "Total Workload (h)": st.column_config.NumberColumn("Total Workload (h)", format="%.1f"),
         "Service Share": st.column_config.NumberColumn("% of Total Time", format="%.1f%%"),
-        "Manager Allocation (h)": st.column_config.NumberColumn("Manager Allocation (h)", format="%.1f"),
-        "Adjusted Workload (h)": st.column_config.NumberColumn("Adjusted Workload (h)", format="%.1f"),
-        "Adjusted FTE": st.column_config.NumberColumn("Required FTE", format="%.2f"),
+        "Required FTE": st.column_config.NumberColumn("Required FTE", format="%.2f"),
     },
 )
