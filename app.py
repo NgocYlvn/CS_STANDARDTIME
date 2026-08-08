@@ -12,13 +12,13 @@ import streamlit as st
 # APP CONFIGURATION
 # ============================================================
 st.set_page_config(
-    page_title="OPERATIONS WORKLOAD & CAPACITY DASHBOARD",
+    page_title="Operations Performance Dashboard",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-APP_TITLE = "OPERATIONS WORKLOAD & CAPACITY DASHBOARD"
+APP_TITLE = "OPERATIONS PERFORMANCE DASHBOARD"
 FTE_HOURS_PER_DAY = 8
 EFFICIENCY = 0.95
 WORKING_DAYS = 22
@@ -36,6 +36,8 @@ SERVICE_LABELS = {
     "CC": "Customs Clearance",
     "WH": "Warehouse",
 }
+
+
 
 MONTH_ORDER = [
     "Apr", "May", "Jun", "Jul", "Aug", "Sep",
@@ -242,7 +244,7 @@ def read_source_file():
         if not p.name.startswith("~$")
     ]
 
-    required = {"HC", "BU allocation", "Shipment volume", "CS FTE"}
+    required = {"HC", "BU allocation", "CS FTE"}
 
     for p in sorted(xlsx_files, key=lambda x: x.stat().st_mtime, reverse=True):
         try:
@@ -257,7 +259,7 @@ def read_source_file():
 
     st.error(
         "Không tìm thấy file Excel có đủ các sheet chính: "
-        "HC, BU allocation, Shipment volume, CS FTE và Customer Volume."
+        "HC, BU allocation, CS FTE và Customer Volume."
     )
     st.info("Đặt file Excel cùng thư mục/repository với file .py rồi Reboot app.")
     st.stop()
@@ -326,6 +328,54 @@ def parse_bu_allocation(file_bytes: bytes) -> pd.DataFrame:
     df["Month"] = pd.Categorical(df["Month"], categories=MONTH_ORDER, ordered=True)
 
     return df.sort_values(["Month", "Office", "Segment"]).reset_index(drop=True)
+
+
+@st.cache_data(show_spinner=False)
+def parse_hc(file_bytes: bytes) -> pd.DataFrame:
+    """
+    Read HC sheet:
+    Row 1 = title, Row 2 = one-line header, Row 3 onward = data.
+    """
+    df = pd.read_excel(
+        io.BytesIO(file_bytes),
+        sheet_name="HC",
+        header=1,
+        usecols="A:M",
+    )
+
+    if df.shape[1] < 13:
+        raise ValueError("Sheet 'HC' không đủ 13 cột dữ liệu.")
+
+    df = df.iloc[:, :13].copy()
+    df.columns = [
+        "Office", "Month",
+        "Approved HC Mgr", "Approved HC PIC", "Total Approved HC",
+        "Actual HC Mgr", "Actual HC PIC", "Total Actual HC",
+        "Required HC Mgr", "Required HC PIC", "Total Required HC",
+        "HC Utilization", "HC Status",
+    ]
+
+    df["Office"] = df["Office"].map(clean_text)
+    df["Month"] = df["Month"].map(normalize_month)
+    df["HC Status"] = df["HC Status"].map(clean_text)
+
+    numeric_cols = [
+        "Approved HC Mgr", "Approved HC PIC", "Total Approved HC",
+        "Actual HC Mgr", "Actual HC PIC", "Total Actual HC",
+        "Required HC Mgr", "Required HC PIC", "Total Required HC",
+        "HC Utilization",
+    ]
+    for c in numeric_cols:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+
+    # Keep rows that identify an Office + Month.
+    # Months without HC values are kept out of the active KPI calculation.
+    df = df[
+        df["Office"].ne("")
+        & df["Month"].isin(MONTH_ORDER)
+    ].copy()
+
+    return df.reset_index(drop=True)
 
 
 @st.cache_data(show_spinner=False)
@@ -458,6 +508,7 @@ def parse_customer_lists(file_bytes: bytes) -> pd.DataFrame:
 # ============================================================
 try:
     source_bytes, source_name = read_source_file()
+    hc = parse_hc(source_bytes)
     bu = parse_bu_allocation(source_bytes)
     cs_fte = parse_cs_fte(source_bytes)
     customer = parse_customer_lists(source_bytes)
@@ -470,7 +521,10 @@ except Exception as exc:
 # SIDEBAR FILTERS
 # ============================================================
 st.sidebar.markdown("## 📊 CS Division")
-
+st.sidebar.markdown(
+    "<div style='color:#D8E5F8;font-size:14px;margin-top:-8px;margin-bottom:14px;'>FTE & Capacity Dashboard</div>",
+    unsafe_allow_html=True,
+)
 st.sidebar.markdown("---")
 
 def reset_child_filters():
@@ -480,7 +534,8 @@ def reset_child_filters():
 
 
 all_offices = sorted(
-    set(bu["Office"].dropna().astype(str))
+    set(hc.get("Office", pd.Series(dtype=str)).dropna().astype(str))
+    | set(bu["Office"].dropna().astype(str))
     | set(cs_fte.get("Office", pd.Series(dtype=str)).dropna().astype(str))
     | set(customer.get("Office", pd.Series(dtype=str)).dropna().astype(str))
 )
@@ -494,7 +549,13 @@ office = st.sidebar.selectbox(
 
 # Month options only from populated BU rows; keep FY order.
 # Add "All" so the dashboard can show the full available period.
-available_months = [m for m in MONTH_ORDER if m in set(bu["Month"].astype(str))]
+available_month_set = (
+    set(hc.get("Month", pd.Series(dtype=str)).dropna().astype(str))
+    | set(bu.get("Month", pd.Series(dtype=str)).dropna().astype(str))
+    | set(cs_fte.get("Month", pd.Series(dtype=str)).dropna().astype(str))
+    | set(customer.get("Month", pd.Series(dtype=str)).dropna().astype(str))
+)
+available_months = [m for m in MONTH_ORDER if m in available_month_set]
 month_options = ["All"] + available_months
 
 month = st.sidebar.selectbox(
@@ -573,6 +634,9 @@ st.sidebar.markdown("---")
 # ============================================================
 # FILTER / CALCULATION MODEL
 # ============================================================
+# -------------------------
+# Workload scope
+# -------------------------
 if month == "All":
     base_bu_month = bu.copy()
 else:
@@ -582,7 +646,19 @@ filtered_bu = base_bu_month.copy()
 if office != "All Offices":
     filtered_bu = filtered_bu[filtered_bu["Office"].eq(office)].copy()
 
-# Customer filter is informational because current workbook does not map customer to segment workload.
+
+# -------------------------
+# HC scope
+# -------------------------
+if month == "All":
+    filtered_hc = hc.copy()
+else:
+    filtered_hc = hc[hc["Month"].eq(month)].copy()
+
+if office != "All Offices":
+    filtered_hc = filtered_hc[filtered_hc["Office"].eq(office)].copy()
+
+# Customer filter applies to Customer Volume only; workload/FTE are not reduced by Customer.
 filtered_customer = cust_scope.copy()
 if selected_customer != "All Customers" and not filtered_customer.empty:
     filtered_customer = filtered_customer[filtered_customer["Customer"].eq(selected_customer)]
@@ -618,7 +694,10 @@ if cs_pic != "All CS PIC" and not pic_scope.empty:
     selected_base_workload = float(filtered_bu["Total Workload"].sum())
     selected_manager_minutes = selected_manager_minutes * pic_share
 
-# Aggregate selected service data.
+# Aggregate Shipment Volume + Workload by BU from BU allocation.
+# Business rule:
+#   Shipment Volume = Core Volume
+#   Workload        = Total Workload (min)
 service = (
     filtered_bu.groupby("Segment", as_index=False)
     .agg(
@@ -626,15 +705,22 @@ service = (
         Base_Workload=("Total Workload", "sum"),
     )
 )
-service = pd.DataFrame({"Segment": SERVICE_ORDER}).merge(service, on="Segment", how="left").fillna(0)
+
+service = (
+    pd.DataFrame({"Segment": SERVICE_ORDER})
+    .merge(service, on="Segment", how="left")
+    .fillna(0)
+)
+
+# Manager Allocation is based on each BU's share of processing/workload time.
 service["Service Share"] = np.where(
     service["Base_Workload"].sum() > 0,
     service["Base_Workload"] / service["Base_Workload"].sum(),
     0,
 )
+
 service["Manager Allocated"] = service["Service Share"] * selected_manager_minutes
 service["Adjusted Workload"] = service["Base_Workload"] + service["Manager Allocated"]
-service["Adjusted FTE"] = 0.0
 service["Service"] = service["Segment"].map(SERVICE_LABELS)
 
 adjusted_total_workload = float(service["Adjusted Workload"].sum())
@@ -644,10 +730,58 @@ period_capacity_minutes = FTE_MINUTES * selected_month_count
 required_fte = safe_divide(adjusted_total_workload, period_capacity_minutes)
 service["Adjusted FTE"] = service["Adjusted Workload"] / period_capacity_minutes
 
+# Official Shipment Volume for the 7 BU groups comes from BU allocation -> Core Volume.
 total_shipments = float(service["Shipment_Volume"].sum())
 
-# Manager FTE is also shown as average monthly FTE for the selected period.
+# Manager FTE is shown as average monthly FTE for the selected period.
 manager_fte_selected = safe_divide(selected_manager_minutes, period_capacity_minutes)
+
+# -------------------------
+# HC KPI calculation
+# -------------------------
+hc_valid = filtered_hc[
+    filtered_hc["Total Actual HC"].notna()
+    | filtered_hc["Total Required HC"].notna()
+    | filtered_hc["Total Approved HC"].notna()
+].copy()
+
+if hc_valid.empty:
+    approved_hc = np.nan
+    actual_hc = np.nan
+    required_hc_total = np.nan
+    hc_utilization = np.nan
+    hc_status = "No data"
+else:
+    if month == "All":
+        # First total offices within each month, then average across months.
+        hc_monthly = (
+            hc_valid.groupby("Month", as_index=False)
+            .agg(
+                Approved_HC=("Total Approved HC", "sum"),
+                Actual_HC=("Total Actual HC", "sum"),
+                Required_HC=("Total Required HC", "sum"),
+            )
+        )
+        approved_hc = float(hc_monthly["Approved_HC"].mean())
+        actual_hc = float(hc_monthly["Actual_HC"].mean())
+        required_hc_total = float(hc_monthly["Required_HC"].mean())
+    else:
+        approved_hc = float(hc_valid["Total Approved HC"].sum())
+        actual_hc = float(hc_valid["Total Actual HC"].sum())
+        required_hc_total = float(hc_valid["Total Required HC"].sum())
+
+    hc_utilization = safe_divide(required_hc_total, actual_hc) if actual_hc else np.nan
+
+    if pd.isna(hc_utilization):
+        hc_status = "No data"
+    elif hc_utilization > 1.00:
+        hc_status = "Overload"
+    elif hc_utilization > 0.95:
+        hc_status = "High Load"
+    elif hc_utilization >= 0.90:
+        hc_status = "Balanced"
+    else:
+        hc_status = "Low Load"
 
 # ============================================================
 # HEADER / DATA NOTE
@@ -667,18 +801,13 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-if selected_customer != "All Customers":
-    st.info(
-        "Customer filter hiện chỉ lọc phần Customer Volume. File nguồn chưa có mapping Customer → Service Segment → CS PIC, "
-        "nên workload/FTE không được giảm theo Customer để tránh phân bổ sai dữ liệu."
-    )
 
 # ============================================================
 # KPI ROW
 # ============================================================
 k1, k2, k3, k4, k5 = st.columns(5, gap="small")
 with k1:
-    kpi_card("Shipment Volume", f"{total_shipments:,.0f}", "Core volume across AI/AE/OI/OE/TR/CC/WH")
+    kpi_card("Shipment Volume", f"{total_shipments:,.0f}", "Core Volume across AI/AE/OI/OE/TR/CC/WH")
 with k2:
     kpi_card("Base Workload", fmt_hours(selected_base_workload), "Before manager allocation")
 with k3:
@@ -687,6 +816,36 @@ with k4:
     kpi_card("Adjusted Workload", fmt_hours(adjusted_total_workload), "Base workload + allocated manager time", "green")
 with k5:
     kpi_card("Required FTE", f"{required_fte:.2f}", f"Average monthly FTE · 1 FTE = {FTE_MINUTES/60:.1f} productive hours/month", "amber")
+
+
+# ============================================================
+# HEADCOUNT & CAPACITY
+# ============================================================
+st.markdown("<br>", unsafe_allow_html=True)
+st.markdown('<div class="section-title">HEADCOUNT & CAPACITY</div>', unsafe_allow_html=True)
+
+h1, h2, h3, h4, h5 = st.columns(5, gap="small")
+
+def _hc_value(v):
+    return "—" if pd.isna(v) else f"{v:,.2f}".rstrip("0").rstrip(".")
+
+with h1:
+    kpi_card("Approved HC", _hc_value(approved_hc), "Approved headcount")
+with h2:
+    kpi_card("Actual HC", _hc_value(actual_hc), "Actual headcount")
+with h3:
+    kpi_card("Required HC", _hc_value(required_hc_total), "Required headcount", "orange")
+with h4:
+    util_text = "—" if pd.isna(hc_utilization) else f"{hc_utilization:.0%}"
+    kpi_card("HC Utilization", util_text, "Required HC / Actual HC", "amber")
+with h5:
+    status_accent = {
+        "Overload": "red",
+        "High Load": "orange",
+        "Balanced": "green",
+        "Low Load": "",
+    }.get(hc_status, "")
+    kpi_card("HC Status", hc_status, "Capacity status", status_accent)
 
 # ============================================================
 # SERVICE VOLUME + SERVICE WORKLOAD
