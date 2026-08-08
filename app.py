@@ -65,7 +65,7 @@ st.markdown(
         background:linear-gradient(180deg,#073472 0%,#0B4D9B 100%);
     }
     [data-testid="stSidebar"] * {color:#FFFFFF;}
-    .block-container {max-width:1650px;padding-top:1.4rem;padding-bottom:2rem;}
+    .block-container {max-width:1650px;padding-top:3.5rem;padding-bottom:2rem;}
     .dashboard-title {
         font-size:1.85rem;font-weight:850;color:var(--navy);
         margin-bottom:0.2rem;letter-spacing:-0.02em;
