@@ -63,8 +63,56 @@ st.markdown(
     .stApp {background:var(--page);}
     [data-testid="stSidebar"] {
         background:linear-gradient(180deg,#073472 0%,#0B4D9B 100%);
+        color:#FFFFFF;
     }
-    [data-testid="stSidebar"] * {color:#FFFFFF;}
+
+    /* Sidebar labels: Office / Month / CS PIC / Customer */
+    section[data-testid="stSidebar"] label {
+        color:#FFFFFF !important;
+        font-weight:600 !important;
+    }
+
+    /* Filter box background + selected text */
+    section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
+        background-color:#FFFFFF !important;
+        color:#172033 !important;
+        border-radius:10px !important;
+    }
+
+    /* Selected value / text inside Selectbox */
+    section[data-testid="stSidebar"] div[data-baseweb="select"] span {
+        color:#172033 !important;
+    }
+
+    /* Input text */
+    section[data-testid="stSidebar"] div[data-baseweb="select"] input {
+        color:#172033 !important;
+        -webkit-text-fill-color:#172033 !important;
+    }
+
+    /* Placeholder */
+    section[data-testid="stSidebar"] div[data-baseweb="select"] input::placeholder {
+        color:#667085 !important;
+        opacity:1 !important;
+    }
+
+    /* Dropdown menu opened from Selectbox */
+    div[data-baseweb="popover"] ul,
+    div[data-baseweb="menu"] {
+        background:#FFFFFF !important;
+    }
+
+    div[data-baseweb="popover"] li,
+    div[data-baseweb="menu"] li {
+        color:#172033 !important;
+    }
+
+    /* Arrow / icons inside filter */
+    section[data-testid="stSidebar"] div[data-baseweb="select"] svg {
+        fill:#667085 !important;
+        color:#667085 !important;
+    }
+
     .block-container {max-width:1650px;padding-top:3.5rem;padding-bottom:2rem;}
     .dashboard-title {
         font-size:1.85rem;font-weight:850;color:var(--navy);
