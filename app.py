@@ -18,7 +18,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-APP_TITLE = "CS WORKLOAD & FTE DASHBOARD"
+APP_TITLE = "OPERATIONS PERFORMANCE DASHBOARD"
 FTE_HOURS_PER_DAY = 8
 EFFICIENCY = 0.95
 WORKING_DAYS = 22
