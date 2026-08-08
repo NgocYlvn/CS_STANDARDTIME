@@ -845,7 +845,7 @@ with h5:
         "Balanced": "green",
         "Low Load": "",
     }.get(hc_status, "")
-    kpi_card("HC Status", hc_status, "Capacity status", status_accent)
+    kpi_card("Capacity status", hc_status, "", status_accent)
 
 # ============================================================
 # SERVICE VOLUME + SERVICE WORKLOAD
