@@ -830,11 +830,11 @@ def _hc_value(v):
     return "—" if pd.isna(v) else f"{v:,.2f}".rstrip("0").rstrip(".")
 
 with h1:
-    kpi_card("Approved HC", _hc_value(approved_hc), "Approved headcount")
+    kpi_card("Approved HC", _hc_value(approved_hc), "")
 with h2:
-    kpi_card("Actual HC", _hc_value(actual_hc), "Actual headcount")
+    kpi_card("Actual HC", _hc_value(actual_hc), "")
 with h3:
-    kpi_card("Required HC", _hc_value(required_hc_total), "Required headcount", "orange")
+    kpi_card("Required HC", _hc_value(required_hc_total), "", "orange")
 with h4:
     util_text = "—" if pd.isna(hc_utilization) else f"{hc_utilization:.0%}"
     kpi_card("HC Utilization", util_text, "Required HC / Actual HC", "amber")
