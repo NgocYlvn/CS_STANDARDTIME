@@ -12,7 +12,7 @@ import streamlit as st
 # APP CONFIGURATION
 # ============================================================
 st.set_page_config(
-    page_title="CS Workload & FTE Dashboard",
+    page_title="Operations Performance Dashboard",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -374,18 +374,41 @@ all_offices = sorted(set(bu["Office"].dropna().astype(str)) | set(cs_fte.get("Of
 office = st.sidebar.selectbox("Office", ["All Offices"] + all_offices)
 
 # Month options only from populated BU rows; keep FY order.
+# Add "All" so the dashboard can show the full available period.
 available_months = [m for m in MONTH_ORDER if m in set(bu["Month"].astype(str))]
-month = st.sidebar.selectbox("Month", available_months, index=max(len(available_months) - 1, 0))
+month_options = ["All"] + available_months
+month = st.sidebar.selectbox("Month", month_options, index=0)
 
-pic_scope = cs_fte[cs_fte["Month"].eq(month)].copy() if not cs_fte.empty else cs_fte.copy()
+# Number of months currently included in the calculation.
+# This is important because Manager FTE and FTE capacity are monthly values.
+selected_month_count = len(available_months) if month == "All" else 1
+selected_month_count = max(selected_month_count, 1)
+
+# CS PIC scope
+if cs_fte.empty:
+    pic_scope = cs_fte.copy()
+elif month == "All":
+    pic_scope = cs_fte.copy()
+else:
+    pic_scope = cs_fte[cs_fte["Month"].eq(month)].copy()
+
 if office != "All Offices" and not pic_scope.empty:
     pic_scope = pic_scope[pic_scope["Office"].eq(office)]
+
 pic_options = sorted(pic_scope["CS PIC"].dropna().unique().tolist()) if not pic_scope.empty else []
 cs_pic = st.sidebar.selectbox("CS PIC", ["All CS PIC"] + pic_options)
 
-cust_scope = customer[customer["Month"].eq(month)].copy() if not customer.empty else customer.copy()
+# Customer scope
+if customer.empty:
+    cust_scope = customer.copy()
+elif month == "All":
+    cust_scope = customer.copy()
+else:
+    cust_scope = customer[customer["Month"].eq(month)].copy()
+
 if office != "All Offices" and not cust_scope.empty:
     cust_scope = cust_scope[cust_scope["Office"].eq(office)]
+
 customer_options = sorted(cust_scope["Customer"].dropna().unique().tolist()) if not cust_scope.empty else []
 selected_customer = st.sidebar.selectbox("Customer", ["All Customers"] + customer_options)
 
@@ -396,7 +419,11 @@ st.sidebar.caption(f"1 FTE = {FTE_MINUTES:,.0f} min/month = {FTE_MINUTES/60:,.1f
 # ============================================================
 # FILTER / CALCULATION MODEL
 # ============================================================
-base_bu_month = bu[bu["Month"].astype(str).eq(month)].copy()
+if month == "All":
+    base_bu_month = bu.copy()
+else:
+    base_bu_month = bu[bu["Month"].astype(str).eq(month)].copy()
+
 filtered_bu = base_bu_month.copy()
 if office != "All Offices":
     filtered_bu = filtered_bu[filtered_bu["Office"].eq(office)].copy()
@@ -410,12 +437,15 @@ if selected_customer != "All Customers" and not filtered_customer.empty:
 network_base_workload = float(base_bu_month["Total Workload"].sum())
 selected_base_workload = float(filtered_bu["Total Workload"].sum())
 
-# Allocate 8 managers to offices by each office's share of network workload.
+# Allocate 8 managers per month to offices by each office's share of network workload.
+# When Month = All, the manager pool is multiplied by the number of selected months.
+manager_pool_minutes = MANAGER_MINUTES * selected_month_count
+
 if office == "All Offices":
-    selected_manager_minutes = MANAGER_MINUTES
+    selected_manager_minutes = manager_pool_minutes
 else:
     office_share = safe_divide(selected_base_workload, network_base_workload)
-    selected_manager_minutes = MANAGER_MINUTES * office_share
+    selected_manager_minutes = manager_pool_minutes * office_share
 
 # PIC selection: use CS FTE as the source of total PIC workload; service split is allocated by office service mix.
 pic_workload_minutes = None
@@ -454,9 +484,15 @@ service["Adjusted FTE"] = service["Adjusted Workload"] / FTE_MINUTES
 service["Service"] = service["Segment"].map(SERVICE_LABELS)
 
 adjusted_total_workload = float(service["Adjusted Workload"].sum())
-required_fte = safe_divide(adjusted_total_workload, FTE_MINUTES)
+
+# Required FTE is shown as average monthly FTE for the selected period.
+period_capacity_minutes = FTE_MINUTES * selected_month_count
+required_fte = safe_divide(adjusted_total_workload, period_capacity_minutes)
+
 total_shipments = float(service["Shipment_Volume"].sum())
-manager_fte_selected = safe_divide(selected_manager_minutes, FTE_MINUTES)
+
+# Manager FTE is also shown as average monthly FTE for the selected period.
+manager_fte_selected = safe_divide(selected_manager_minutes, period_capacity_minutes)
 
 # ============================================================
 # HEADER / DATA NOTE
@@ -492,7 +528,7 @@ with k3:
 with k4:
     kpi_card("Adjusted Workload", fmt_hours(adjusted_total_workload), "Base workload + allocated manager time", "green")
 with k5:
-    kpi_card("Required FTE", f"{required_fte:.2f}", f"1 FTE = {FTE_MINUTES/60:.1f} productive hours/month", "amber")
+    kpi_card("Required FTE", f"{required_fte:.2f}", f"Average monthly FTE · 1 FTE = {FTE_MINUTES/60:.1f} productive hours/month", "amber")
 
 # ============================================================
 # SERVICE VOLUME + SERVICE WORKLOAD
@@ -561,7 +597,7 @@ with left:
             office_workload["Base Workload"] / office_workload["Base Workload"].sum(),
             0,
         )
-        office_workload["Manager Allocated"] = office_workload["Network Share"] * MANAGER_MINUTES
+        office_workload["Manager Allocated"] = office_workload["Network Share"] * manager_pool_minutes
         office_workload["Adjusted Workload"] = office_workload["Base Workload"] + office_workload["Manager Allocated"]
         office_workload["Hours"] = office_workload["Adjusted Workload"] / 60
         office_workload = office_workload.sort_values("Hours", ascending=True)
@@ -605,11 +641,26 @@ left, right = st.columns([1.25, 1], gap="medium")
 
 with left:
     st.markdown('<div class="section-title">CS PIC FTE & WORKLOAD</div>', unsafe_allow_html=True)
-    pic_table = cs_fte[cs_fte["Month"].eq(month)].copy()
+    if month == "All":
+        pic_table = cs_fte.copy()
+    else:
+        pic_table = cs_fte[cs_fte["Month"].eq(month)].copy()
+
     if office != "All Offices":
         pic_table = pic_table[pic_table["Office"].eq(office)]
     if cs_pic != "All CS PIC":
         pic_table = pic_table[pic_table["CS PIC"].eq(cs_pic)]
+
+    # For Month = All, show average monthly FTE and average monthly workload
+    # instead of summing FTE across months.
+    if month == "All" and not pic_table.empty:
+        pic_table = (
+            pic_table.groupby(["Office", "CS PIC"], as_index=False)
+            .agg(
+                FTE=("FTE", "mean"),
+                **{"PIC Workload": ("PIC Workload", "mean")},
+            )
+        )
 
     if pic_table.empty:
         st.info("No CS PIC FTE data available for selected filters.")
@@ -687,5 +738,6 @@ st.dataframe(
 st.caption(
     "Calculation: 1 FTE = 8 hours/day × 95% efficiency × 22 working days = "
     f"{FTE_MINUTES:,.0f} minutes ({FTE_MINUTES/60:.1f} hours) per month. "
-    "Manager pool = 8 FTE/month and is allocated to offices/services in proportion to base workload."
+    "Manager pool = 8 FTE/month and is allocated to offices/services in proportion to base workload. "
+    "When Month = All, workload is accumulated for all available months while FTE is shown as an average monthly requirement."
 )
