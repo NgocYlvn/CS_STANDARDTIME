@@ -151,6 +151,37 @@ def clean_text(value):
     return re.sub(r"\s+", " ", str(value)).strip()
 
 
+def normalize_month(value):
+    """Convert Excel/text month headers such as Apr, Apr-26, or Excel dates to Apr."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+
+    if isinstance(value, (pd.Timestamp,)):
+        return value.strftime("%b")
+
+    # Python datetime/date values
+    if hasattr(value, "strftime") and not isinstance(value, str):
+        try:
+            return value.strftime("%b")
+        except Exception:
+            pass
+
+    s = clean_text(value)
+    if not s:
+        return ""
+
+    # Try datetime parsing first for values like 2026-08-01 / 01-Aug-2026
+    try:
+        dt = pd.to_datetime(s, errors="raise")
+        return dt.strftime("%b")
+    except Exception:
+        pass
+
+    # Fallback for text such as Apr-26, Apr, APR
+    abbr = s[:3].title()
+    return abbr if abbr in MONTH_ORDER else ""
+
+
 def safe_num(series):
     return pd.to_numeric(series, errors="coerce").fillna(0)
 
@@ -210,83 +241,128 @@ def read_source_file():
         p for p in app_dir.rglob("*.xlsx")
         if not p.name.startswith("~$")
     ]
-    required = {"BU allocation", "CS FTE", "N-S Customer list"}
+
+    required = {"HC", "BU allocation", "Shipment volume", "CS FTE"}
 
     for p in sorted(xlsx_files, key=lambda x: x.stat().st_mtime, reverse=True):
         try:
             xl = pd.ExcelFile(p)
-            if required.issubset(set(xl.sheet_names)):
+            sheet_names = set(xl.sheet_names)
+            has_customer = any(s.startswith("Customer Volume") for s in xl.sheet_names)
+
+            if required.issubset(sheet_names) and has_customer:
                 return p.read_bytes(), p.name
         except Exception:
             continue
 
-    st.error("Không tìm thấy file Excel có đủ các sheet: BU allocation, CS FTE, N-S Customer list.")
+    st.error(
+        "Không tìm thấy file Excel có đủ các sheet chính: "
+        "HC, BU allocation, Shipment volume, CS FTE và Customer Volume."
+    )
     st.info("Đặt file Excel cùng thư mục/repository với file .py rồi Reboot app.")
     st.stop()
 
 
 @st.cache_data(show_spinner=False)
 def parse_bu_allocation(file_bytes: bytes) -> pd.DataFrame:
-    """Read BU allocation into tidy rows: Office / Month / Segment / volumes / workload."""
-    raw = pd.read_excel(io.BytesIO(file_bytes), sheet_name="BU allocation", header=None)
-    if raw.shape[1] < 13:
-        raise ValueError("Sheet 'BU allocation' không đúng cấu trúc mong đợi.")
+    """
+    Read the standardized BU allocation sheet.
+    Row 1 = title, Row 2 = one-line header, Row 3 onward = data.
+    """
+    df = pd.read_excel(
+        io.BytesIO(file_bytes),
+        sheet_name="BU allocation",
+        header=1,
+        usecols="A:M",
+    )
 
-    df = raw.iloc[3:, :13].copy()
+    expected = [
+        "Office", "Month", "Segment",
+        "Core Volume", "Core Workload (min)",
+        "Ancillary Volume", "Ancillary Workload (min)",
+        "Supporting Volume", "Supporting Workload (min)",
+        "Exception Volume", "Exception Workload (min)",
+        "Total Workload (min)", "% of Network",
+    ]
+
+    if df.shape[1] < 13:
+        raise ValueError("Sheet 'BU allocation' không đủ 13 cột dữ liệu.")
+
+    # Use positional mapping so minor wording/spacing changes do not break the app.
+    df = df.iloc[:, :13].copy()
     df.columns = [
         "Office", "Month", "Segment",
-        "Core Volume", "Core Time",
-        "Ancillary Volume", "Ancillary Time",
-        "Supporting Volume", "Supporting Time",
-        "Exception Volume", "Exception Time",
+        "Core Volume", "Core Workload",
+        "Ancillary Volume", "Ancillary Workload",
+        "Supporting Volume", "Supporting Workload",
+        "Exception Volume", "Exception Workload",
         "Total Workload", "Network Share",
     ]
 
-    for c in ["Office", "Month", "Segment"]:
+    for c in ["Office", "Segment"]:
         df[c] = df[c].map(clean_text)
 
+    df["Month"] = df["Month"].map(normalize_month)
+
     numeric_cols = [
-        "Core Volume", "Core Time", "Ancillary Volume", "Ancillary Time",
-        "Supporting Volume", "Supporting Time", "Exception Volume", "Exception Time",
+        "Core Volume", "Core Workload",
+        "Ancillary Volume", "Ancillary Workload",
+        "Supporting Volume", "Supporting Workload",
+        "Exception Volume", "Exception Workload",
         "Total Workload", "Network Share",
     ]
+
     for c in numeric_cols:
         df[c] = pd.to_numeric(df[c], errors="coerce")
 
     df = df[
         df["Office"].ne("")
-        & df["Month"].ne("")
+        & df["Month"].isin(MONTH_ORDER)
         & df["Segment"].isin(SERVICE_ORDER)
     ].copy()
 
     df["Total Workload"] = df["Total Workload"].fillna(0)
     df["Core Volume"] = df["Core Volume"].fillna(0)
     df["Month"] = pd.Categorical(df["Month"], categories=MONTH_ORDER, ordered=True)
+
     return df.sort_values(["Month", "Office", "Segment"]).reset_index(drop=True)
 
 
 @st.cache_data(show_spinner=False)
 def parse_cs_fte(file_bytes: bytes) -> pd.DataFrame:
-    """Read CS FTE wide table into Office / CS PIC / Month / FTE."""
-    raw = pd.read_excel(io.BytesIO(file_bytes), sheet_name="CS FTE", header=None)
-    if raw.shape[0] < 3 or raw.shape[1] < 3:
+    """
+    Read CS FTE sheet:
+    Row 1 = title, Row 2 = Office / CS PIC / Apr-26 ... Mar-27.
+    """
+    df = pd.read_excel(
+        io.BytesIO(file_bytes),
+        sheet_name="CS FTE",
+        header=1,
+    )
+
+    if df.shape[1] < 3:
         return pd.DataFrame(columns=["Office", "CS PIC", "Month", "FTE", "PIC Workload"])
 
-    month_headers = [clean_text(x) for x in raw.iloc[1, 2:].tolist()]
-    rows = raw.iloc[2:, :].copy()
+    office_col = df.columns[0]
+    pic_col = df.columns[1]
+
     records = []
-    for _, r in rows.iterrows():
-        office = clean_text(r.iloc[0])
-        pic = clean_text(r.iloc[1])
+    for _, row in df.iterrows():
+        office = clean_text(row.get(office_col))
+        pic = clean_text(row.get(pic_col))
+
         if not office or not pic:
             continue
-        for idx, mh in enumerate(month_headers, start=2):
-            if not mh:
+
+        for col in df.columns[2:]:
+            month = normalize_month(col)
+            if month not in MONTH_ORDER:
                 continue
-            value = pd.to_numeric(pd.Series([r.iloc[idx]]), errors="coerce").iloc[0]
+
+            value = pd.to_numeric(pd.Series([row.get(col)]), errors="coerce").iloc[0]
             if pd.isna(value):
                 continue
-            month = mh[:3].title()
+
             records.append({
                 "Office": office,
                 "CS PIC": pic,
@@ -294,57 +370,87 @@ def parse_cs_fte(file_bytes: bytes) -> pd.DataFrame:
                 "FTE": float(value),
                 "PIC Workload": float(value) * FTE_MINUTES,
             })
+
     return pd.DataFrame(records)
 
 
 @st.cache_data(show_spinner=False)
 def parse_customer_lists(file_bytes: bytes) -> pd.DataFrame:
-    """Combine customer-list sheets into Office / Customer / Month / Shipment Volume."""
+    """
+    Combine Customer Volume sheets into Office / Customer / Month / Shipment Volume.
+
+    Dedicated sheets (Customer Volume - HAD/HAN/HLC/HCM) are preferred.
+    Customer Volume-N&S is used only as a fallback for records not already
+    available in the dedicated office sheets, preventing double counting.
+    """
     xl = pd.ExcelFile(io.BytesIO(file_bytes))
-    candidate_sheets = [s for s in xl.sheet_names if "Customer list" in s]
-    records = []
+    candidate_sheets = [s for s in xl.sheet_names if s.startswith("Customer Volume")]
+
+    all_records = []
 
     for sheet in candidate_sheets:
-        raw = pd.read_excel(io.BytesIO(file_bytes), sheet_name=sheet, header=None)
-        if raw.shape[0] < 3 or raw.shape[1] < 4:
+        df = pd.read_excel(
+            io.BytesIO(file_bytes),
+            sheet_name=sheet,
+            header=1,
+        )
+
+        if df.shape[1] < 4:
             continue
 
-        # N-S list contains Office in column B and Customer in C.
-        # HAN/HLC lists contain Customer in B; office is inferred from sheet name.
-        if clean_text(raw.iloc[0, 1]).casefold() == "office":
-            office_col, customer_col, first_month_col = 1, 2, 3
-        else:
-            office_col, customer_col, first_month_col = None, 1, 2
+        # Standardized customer sheets:
+        # No. | Office | Customer | Apr-26 ... Mar-27 | Total
+        office_col = df.columns[1]
+        customer_col = df.columns[2]
 
-        month_headers = [clean_text(x) for x in raw.iloc[1, first_month_col:].tolist()]
-        inferred_office = ""
-        if sheet.upper().startswith("HAN"):
-            inferred_office = "HAN"
-        elif sheet.upper().startswith("HLC"):
-            inferred_office = "HLC"
+        # Dedicated office sheets should win over N&S if the same record exists.
+        source_priority = 1 if sheet.strip() == "Customer Volume-N&S" else 0
 
-        for _, r in raw.iloc[2:].iterrows():
-            customer = clean_text(r.iloc[customer_col])
-            if not customer:
-                continue
-            office = clean_text(r.iloc[office_col]) if office_col is not None else inferred_office
-            if not office:
+        for _, row in df.iterrows():
+            office = clean_text(row.get(office_col))
+            customer_name = clean_text(row.get(customer_col))
+
+            if not office or not customer_name:
                 continue
 
-            for j, mh in enumerate(month_headers, start=first_month_col):
-                if not mh or mh.casefold() == "total":
+            for col in df.columns[3:]:
+                if clean_text(col).casefold() == "total":
                     continue
-                value = pd.to_numeric(pd.Series([r.iloc[j]]), errors="coerce").iloc[0]
+
+                month = normalize_month(col)
+                if month not in MONTH_ORDER:
+                    continue
+
+                value = pd.to_numeric(pd.Series([row.get(col)]), errors="coerce").iloc[0]
                 if pd.isna(value):
                     continue
-                records.append({
+
+                all_records.append({
                     "Office": office,
-                    "Customer": customer,
-                    "Month": mh[:3].title(),
+                    "Customer": customer_name,
+                    "Month": month,
                     "Customer Shipment Volume": float(value),
+                    "_priority": source_priority,
+                    "_sheet": sheet,
                 })
 
-    return pd.DataFrame(records)
+    if not all_records:
+        return pd.DataFrame(
+            columns=["Office", "Customer", "Month", "Customer Shipment Volume"]
+        )
+
+    out = pd.DataFrame(all_records)
+    out = out.sort_values("_priority")
+
+    # Prefer the dedicated Office sheet over N&S duplicates.
+    out = out.drop_duplicates(
+        subset=["Office", "Customer", "Month"],
+        keep="first",
+    )
+
+    return out[
+        ["Office", "Customer", "Month", "Customer Shipment Volume"]
+    ].reset_index(drop=True)
 
 
 # ============================================================
@@ -379,6 +485,7 @@ def reset_child_filters():
 all_offices = sorted(
     set(bu["Office"].dropna().astype(str))
     | set(cs_fte.get("Office", pd.Series(dtype=str)).dropna().astype(str))
+    | set(customer.get("Office", pd.Series(dtype=str)).dropna().astype(str))
 )
 
 office = st.sidebar.selectbox(
@@ -530,7 +637,7 @@ service["Service Share"] = np.where(
 )
 service["Manager Allocated"] = service["Service Share"] * selected_manager_minutes
 service["Adjusted Workload"] = service["Base_Workload"] + service["Manager Allocated"]
-service["Adjusted FTE"] = service["Adjusted Workload"] / FTE_MINUTES
+service["Adjusted FTE"] = 0.0
 service["Service"] = service["Segment"].map(SERVICE_LABELS)
 
 adjusted_total_workload = float(service["Adjusted Workload"].sum())
@@ -538,6 +645,7 @@ adjusted_total_workload = float(service["Adjusted Workload"].sum())
 # Required FTE is shown as average monthly FTE for the selected period.
 period_capacity_minutes = FTE_MINUTES * selected_month_count
 required_fte = safe_divide(adjusted_total_workload, period_capacity_minutes)
+service["Adjusted FTE"] = service["Adjusted Workload"] / period_capacity_minutes
 
 total_shipments = float(service["Shipment_Volume"].sum())
 
@@ -659,13 +767,33 @@ with left:
         standard_chart_layout(fig, 340)
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     else:
-        pic_display = pic_scope.copy()
+        pic_display = pic_scope[pic_scope["CS PIC"].eq(cs_pic)].copy()
+
         if office != "All Offices":
             pic_display = pic_display[pic_display["Office"].eq(office)]
+
+        if month == "All" and not pic_display.empty:
+            pic_display = (
+                pic_display.groupby(["Office", "CS PIC"], as_index=False)
+                .agg(**{"PIC Workload": ("PIC Workload", "mean")})
+            )
+
         pic_display["Hours"] = pic_display["PIC Workload"] / 60
         pic_display = pic_display.sort_values("Hours", ascending=True)
-        fig = px.bar(pic_display, x="Hours", y="CS PIC", orientation="h", text="Hours")
-        fig.update_traces(marker_color="#169B62", texttemplate="%{text:.1f}h", textposition="outside", cliponaxis=False)
+
+        fig = px.bar(
+            pic_display,
+            x="Hours",
+            y="CS PIC",
+            orientation="h",
+            text="Hours",
+        )
+        fig.update_traces(
+            marker_color="#169B62",
+            texttemplate="%{text:.1f}h",
+            textposition="outside",
+            cliponaxis=False,
+        )
         standard_chart_layout(fig, 340)
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
@@ -786,11 +914,4 @@ st.dataframe(
         "Adjusted Workload (h)": st.column_config.NumberColumn("Adjusted Workload (h)", format="%.1f"),
         "Adjusted FTE": st.column_config.NumberColumn("Required FTE", format="%.2f"),
     },
-)
-
-st.caption(
-    "Calculation: 1 FTE = 8 hours/day × 95% efficiency × 22 working days = "
-    f"{FTE_MINUTES:,.0f} minutes ({FTE_MINUTES/60:.1f} hours) per month. "
-    "Manager pool = 8 FTE/month and is allocated to offices/services in proportion to base workload. "
-    "When Month = All, workload is accumulated for all available months while FTE is shown as an average monthly requirement."
 )
